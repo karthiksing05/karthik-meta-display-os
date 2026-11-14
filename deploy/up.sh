@@ -10,7 +10,8 @@
 # Leave it running while you code: edits to glasses/ rebuild and the lens reloads itself; edits to
 # relay/, shared/ or relay/.env restart the relay. The tunnel (and so the QR) stays the same.
 #
-# Options: --demo  --tunnel tailscale|cloudflare  --no-prompt  --no-watch
+# Options: --demo  --tunnel tailscale|cloudflare  --no-prompt  --no-watch  --no-open
+# (The Claude Shell menu bar app runs this with --no-prompt --no-open.)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,6 +21,7 @@ DEMO=0
 TUNNEL=""
 PROMPT=1
 WATCH=1
+OPEN=1
 [ -t 0 ] || PROMPT=0
 
 while [ $# -gt 0 ]; do
@@ -28,7 +30,8 @@ while [ $# -gt 0 ]; do
     --tunnel) TUNNEL="${2:-}"; shift ;;
     --no-prompt) PROMPT=0 ;;
     --no-watch) WATCH=0 ;;
-    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    --no-open) OPEN=0 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
   shift
@@ -62,8 +65,8 @@ chmod 600 "$ENV"
 PORT="$(env_get PORT)"; PORT="${PORT:-8787}"
 
 if [ "$DEMO" = 0 ]; then
-  # Claude credential
-  if [ -z "$(env_get CLAUDE_CODE_OAUTH_TOKEN)" ] && [ -z "$(env_get ANTHROPIC_API_KEY)" ]; then
+  # Claude credential (only for CLAUDE_AUTH=token; the default login mode uses your Claude Code login)
+  if [ "$(env_get CLAUDE_AUTH)" = "token" ] && [ -z "$(env_get CLAUDE_CODE_OAUTH_TOKEN)" ] && [ -z "$(env_get ANTHROPIC_API_KEY)" ]; then
     if [ "$PROMPT" = 1 ] && command -v claude >/dev/null; then
       say "No Claude credential in relay/.env yet"
       echo "    'claude setup-token' opens your browser, signs in with your Claude subscription,"
@@ -104,6 +107,12 @@ if [ "$DEMO" = 0 ]; then
     n=$(find "$REPOS_ABS" -mindepth 2 -maxdepth 2 -name .git 2>/dev/null | wc -l | tr -d ' ')
     say "Repos folder: $REPOS_ABS ($n git repo(s))"
   fi
+fi
+
+# Hooks: show every Claude Code session on this Mac live on the lens (idempotent).
+if [ "$DEMO" = 0 ] && ! grep -q '.claude-shell/hook.sh' "$HOME/.claude/settings.json" 2>/dev/null; then
+  say "Installing Claude Code hooks (all your sessions show on the lens)"
+  npm run hooks -s -- install >/dev/null || warn "Couldn't install hooks (npm run hooks -- install)"
 fi
 
 # ---------- 3. build the glasses app ----------
@@ -180,7 +189,7 @@ for _ in $(seq 1 45); do curl -fsS "$URL/healthz" >/dev/null 2>&1 && { ok=1; bre
 
 # ---------- 6. QR ----------
 npm run qr -w relay -- "$URL" 2>/dev/null | grep -v '^>' || die "QR generation failed"
-open "$ROOT/relay/install-qr.png" 2>/dev/null || true
+[ "$OPEN" = 1 ] && { open "$ROOT/relay/install-qr.png" 2>/dev/null || true; }
 
 cat <<EOF
 $(say "Ready")

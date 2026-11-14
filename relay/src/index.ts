@@ -85,6 +85,25 @@ const server = http.createServer(async (req, res) => {
       return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out));
     }
 
+    // For the menu bar app: a small status summary (token required, no secrets in it).
+    if (url.pathname === '/status.json') {
+      if (!tokenOk(k)) return res.writeHead(401).end();
+      const asks = new Set([...state.approvals, ...state.questions].map((a) => a.sessionId));
+      const body = {
+        ok: true,
+        demo: config.demo,
+        publicUrl: config.publicUrl,
+        lens: hub.connected,
+        sessions: state.sessions.length,
+        working: state.sessions.filter((s) => s.status === 'running' || s.status === 'starting').length,
+        needsYou: state.sessions.filter((s) => asks.has(s.id) || s.status === 'waiting').length,
+        approvals: state.settings.approvals,
+        totp: state.integrations.totp,
+        groq: state.integrations.groq,
+      };
+      return res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(body));
+    }
+
     if (url.pathname === '/install') {
       if (!tokenOk(k)) return res.writeHead(401).end('Add ?k=<SHELL_TOKEN>');
       const link = installLink(config.publicUrl || `https://${req.headers.host}`, config.token);

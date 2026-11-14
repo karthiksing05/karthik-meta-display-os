@@ -11,7 +11,7 @@ Mac (this folder) ──git push──▶ GitHub ──git pull──▶ relay s
 ```
 
 Detailed references: [docs/PUSH_TO_GLASSES.md](docs/PUSH_TO_GLASSES.md) ·
-[docs/SERVER.md](docs/SERVER.md) · [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)
+[docs/SERVER.md](docs/SERVER.md)
 
 ---
 
@@ -40,11 +40,11 @@ git commit -m "Claude Shell v0.1"
 gh repo create claude-shell --private --source=. --push
 ```
 
-**Keep the repo private.** It holds no secrets (`relay/.env`, tokens and the 2FA vault are in
+**Keep the repo private.** It holds no secrets (`relay/.env` and tokens are in
 `.gitignore`), but there's no reason to publish your setup. Check that nothing secret slipped in:
 
 ```bash
-git ls-files | grep -E '\.env$|totp|install-qr' || echo "clean"
+git ls-files | grep -E '\.env$|install-qr' || echo "clean"
 ```
 
 ## Step 2: Run the relay

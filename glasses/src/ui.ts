@@ -71,6 +71,9 @@ const P: Record<string, string> = {
   bolt: '<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>',
   photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 8"/>',
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/>',
+  laptop: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+  wifi: '<path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1" fill="currentColor"/>',
+  wifioff: '<path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M3 3l18 18"/>',
   ask: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.7M12 17h.01"/>',
 };
 
@@ -91,12 +94,13 @@ export function bar(frac: number | null, color = C.green) {
   return `<div class="bar"><i style="width:${pct}%;background:${color}"></i></div>`;
 }
 
-function battery(level: number | null, label: string, ic: string) {
+function battery(level: number | null, label: string, ic: string, charging = false) {
   const color = level == null ? C.cm : level <= 20 ? C.pink : level <= 40 ? C.orange : C.green;
-  return `<span class="batt" title="${label}">${icon(ic, 18, C.cm)}<b style="color:${color}">${level == null ? '—' : level + '%'}</b></span>`;
+  return `<span class="batt" title="${label}">${icon(ic, 18, C.cm)}<b style="color:${color}">${level == null ? '—' : level + '%'}</b>${charging ? icon('bolt', 12, C.yellow) : ''}</span>`;
 }
 
-/** Top bar on every screen: title, connection dot, both batteries, clock. */
+/** Top bar on every screen: title, connection dot, glasses + Mac battery, Mac Wi-Fi, clock.
+ *  (The Neural Band's battery isn't exposed to web apps: getBattery() reports the glasses only.) */
 export function header(title: string, color = C.yellow) {
   const s = store.state;
   const dot = store.connected ? C.green : C.pink;
@@ -105,8 +109,9 @@ export function header(title: string, color = C.yellow) {
     <span class="hdr-right">
       ${s?.integrations.demo ? '<span class="tag">demo</span>' : ''}
       <i class="dot" style="background:${dot}" title="${store.connected ? 'relay connected' : 'relay offline'}"></i>
-      ${battery(device.battery, 'glasses', 'glasses')}
-      ${battery(null, 'neural band (not exposed to web apps yet)', 'band')}
+      ${battery(device.battery, 'glasses', 'glasses', device.charging)}
+      ${s ? battery(s.host.battery, 'mac', 'laptop', s.host.charging) : ''}
+      ${s && s.host.wifi ? icon(s.host.wifi === 'connected' ? 'wifi' : 'wifioff', 16, s.host.wifi === 'connected' ? C.green : C.pink) : ''}
       <span class="clock">${clock(now())}</span>
     </span>
   </header>`;
@@ -132,4 +137,72 @@ export function cover(seed: string, size: number) {
 
 export function art(url: string | null, seed: string, size: number) {
   return url ? `<img class="cover" src="${esc(url)}" width="${size}" height="${size}" alt="">` : cover(seed, size);
+}
+
+// ---------- markdown (Claude's messages) ----------
+/** Small, safe markdown → HTML: everything is escaped first, then a known subset is styled. */
+export function md(src: string): string {
+  const out: string[] = [];
+  const lines = String(src ?? '').replace(/\r/g, '').split('\n');
+  let list: 'ul' | 'ol' | null = null;
+  const closeList = () => {
+    if (list) out.push(`</${list}>`);
+    list = null;
+  };
+  const inline = (t: string) =>
+    esc(t)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/__([^_]+)__/g, '<b>$1</b>')
+      .replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, '$1<i>$2</i>')
+      .replace(/~~([^~]+)~~/g, '<s>$1</s>')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<u>$1</u>');
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    const fence = l.match(/^\s*```(\S*)/);
+    if (fence) {
+      closeList();
+      const code: string[] = [];
+      while (++i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i]);
+      out.push(`<pre class="md-code">${esc(code.join('\n'))}</pre>`);
+      continue;
+    }
+    if (/^\s*\|.*\|\s*$/.test(l)) {
+      closeList();
+      const rows: string[][] = [];
+      for (; i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i]); i++) {
+        if (/^\s*\|[\s:|-]+\|\s*$/.test(lines[i])) continue;
+        rows.push(lines[i].trim().slice(1, -1).split('|').map((c) => c.trim()));
+      }
+      i--;
+      out.push(`<table class="md-table">${rows.map((r, ri) => `<tr>${r.map((c) => (ri ? `<td>${inline(c)}</td>` : `<th>${inline(c)}</th>`)).join('')}</tr>`).join('')}</table>`);
+      continue;
+    }
+    const h = l.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      closeList();
+      out.push(`<div class="md-h md-h${Math.min(h[1].length, 3)}">${inline(h[2])}</div>`);
+      continue;
+    }
+    const ul = l.match(/^\s*[-*+]\s+(.*)$/);
+    const ol = l.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      const kind = ul ? 'ul' : 'ol';
+      if (list !== kind) {
+        closeList();
+        out.push(`<${kind} class="md-list">`);
+        list = kind;
+      }
+      const item = (ul ?? ol)![1].replace(/^\[( |x)\]\s*/i, (_m, x) => (x.trim() ? '✓ ' : '☐ '));
+      out.push(`<li>${inline(item)}</li>`);
+      continue;
+    }
+    closeList();
+    if (/^\s*>\s?/.test(l)) out.push(`<div class="md-quote">${inline(l.replace(/^\s*>\s?/, ''))}</div>`);
+    else if (/^\s*(-{3,}|\*{3,})\s*$/.test(l)) out.push('<hr class="md-hr">');
+    else if (!l.trim()) out.push('<div class="md-gap"></div>');
+    else out.push(`<div>${inline(l)}</div>`);
+  }
+  closeList();
+  return `<div class="md">${out.join('')}</div>`;
 }

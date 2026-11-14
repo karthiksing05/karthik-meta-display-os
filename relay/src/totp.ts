@@ -50,6 +50,14 @@ export function saveVault(accounts: TotpAccount[]) {
   fs.writeFileSync(FILE, Buffer.concat([salt, iv, c.getAuthTag(), data]), { mode: 0o600 });
 }
 
+/** The vault, re-read only when totp.enc changes (so an import shows up without a restart). */
+let cache: { mtime: number; accounts: TotpAccount[] } | null = null;
+export function vaultNow(): TotpAccount[] {
+  const mtime = fs.existsSync(FILE) ? fs.statSync(FILE).mtimeMs : 0;
+  if (!cache || cache.mtime !== mtime) cache = { mtime, accounts: loadVault() };
+  return cache.accounts;
+}
+
 export const totpEnabled = () => Boolean(config.totpPassphrase && config.totpUnlock.length >= 4 && fs.existsSync(FILE));
 
 // ---------- RFC 6238 ----------

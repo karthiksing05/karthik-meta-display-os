@@ -32,7 +32,7 @@ main.scroll { overflow-y: auto; scrollbar-width: none; }
 main.scroll::-webkit-scrollbar { display: none; }
 
 header { height: 44px; padding: 0 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #3e3d32; flex: none; }
-header .title { font-weight: 700; font-size: 18px; }
+header .title { font-weight: 700; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; margin-right: 10px; }
 .hdr-right { display: flex; align-items: center; gap: 12px; color: var(--cm); font-size: 15px; }
 .batt { display: inline-flex; align-items: center; gap: 3px; }
 .batt b { font-weight: 400; }
@@ -98,35 +98,37 @@ footer { height: 28px; flex: none; padding: 0 12px; color: var(--cm); font-size:
 .diff .add { color: var(--green); } .diff .del { color: var(--pink); }
 .gestures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 
-/* Spotify */
-.np { display: flex; gap: 16px; align-items: center; }
-.cover { border-radius: 10px; display: block; object-fit: cover; flex: none; }
-.ring { position: relative; flex: none; }
-.ring svg.r { position: absolute; inset: -10px; }
-.picks { display: flex; gap: 8px; }
-.pick { padding: 0; border: 1.5px solid transparent; border-radius: 10px; background: none; cursor: pointer; }
+/* Session text: keep Claude's line breaks; clamp the preview, full text on the conversation screen. */
+.pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.clamp6 { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.item.msg { text-align: left; align-items: flex-start; }
 
-/* Compose */
-textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1.5px solid var(--line); border-radius: 10px; padding: 10px; width: 100%; height: 130px; resize: none; }
-
-/* Overlays */
-#overlay { position: fixed; inset: 0; pointer-events: none; }
-.toast { position: absolute; left: 12px; right: 12px; top: 52px; background: var(--panel); border: 1.5px solid var(--cyan); border-radius: 10px; padding: 10px 12px; animation: drop .2s ease-out; }
-.toast.warn { border-color: var(--orange); } .toast.good { border-color: var(--green); } .toast.error { border-color: var(--pink); }
-@keyframes drop { from { transform: translateY(-12px); opacity: 0; } }
-.center { flex: 1; display: grid; place-items: center; text-align: center; }
-
-/* Photos */
-.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.thumb { position: relative; padding: 0; border: 2px solid transparent; border-radius: 8px; overflow: hidden; aspect-ratio: 1; background: var(--panel); cursor: pointer; }
-.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.thumb .fav { position: absolute; right: 5px; bottom: 2px; color: var(--pink); font-style: normal; }
-.viewer { position: relative; width: 600px; height: 600px; background: #000; display: flex; flex-direction: column; }
-.viewer img { flex: 1; min-height: 0; width: 100%; object-fit: contain; }
-.viewer .caption { height: 40px; display: flex; gap: 12px; align-items: center; padding: 0 12px; font-size: 14px; }
-.viewer .caption .y { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ghost { position: absolute; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; }
+/* markdown in Claude's messages */
+.md { overflow-wrap: anywhere; }
+.md code { color: var(--orange, #FD971F); font-size: 0.92em; }
+.md b { color: #F8F8F2; font-weight: 700; }
+.md i { color: #E6DB74; }
+.md u { color: #66D9EF; text-decoration: none; }
+.md-h { color: #A6E22E; font-weight: 700; margin-top: 4px; }
+.md-h1 { font-size: 1.12em; }
+.md-list { margin: 2px 0; padding-left: 20px; }
+.md-list li::marker { color: #FF6188; }
+.md-code { white-space: pre-wrap; font-size: 0.85em; color: #E6DB74; border-left: 2px solid #AE81FF; padding-left: 8px; margin: 4px 0; }
+.md-quote { color: #A39E87; border-left: 2px solid #A39E87; padding-left: 8px; }
+.md-table { border-collapse: collapse; font-size: 0.85em; margin: 4px 0; }
+.md-table th { color: #66D9EF; text-align: left; }
+.md-table th, .md-table td { border-bottom: 1px solid #555; padding: 2px 6px 2px 0; vertical-align: top; }
+.md-hr { border: 0; border-top: 1px solid #555; margin: 6px 0; }
+.md-gap { height: 6px; }
+/* full-message reader: the page scrolls with up/down */
+main.reader { overflow-y: auto; scroll-behavior: smooth; }
+.reader-pos { color: #AE81FF; }
+/* inline reply box on the session screen */
+.inline-compose { display: flex; flex-direction: column; gap: 8px; }
+textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 10px; resize: none; min-height: 70px; width: 100%; box-sizing: border-box; }
+textarea:focus { outline: none; border-color: var(--pink); }
 
 /* 2FA */
+.ghost { position: absolute; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; }
 .pattern { font-size: 34px; letter-spacing: 8px; color: var(--purple); margin: 14px 0; min-height: 44px; }
 .code { font-size: 26px; font-weight: 700; letter-spacing: 2px; }

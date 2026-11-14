@@ -118,6 +118,7 @@ export function decide(
 ): Verdict {
   if (tool.startsWith('mcp__glasses__')) return 'allow';
   if (tool === 'AskUserQuestion') return 'ask'; // routed to the question inbox, not an approval
+  if (preset === 'everything') return 'allow';
 
   if (tool === 'Bash' && isDangerous(String(input.command ?? ''))) return 'ask';
   if (learned.some((r) => matchesRule(r, tool, input))) return 'allow';

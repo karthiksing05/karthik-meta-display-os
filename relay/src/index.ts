@@ -9,18 +9,15 @@ import { config } from './config.ts';
 import { hub, state } from './hub.ts';
 import {
   answerQuestion, askAll, allSessions, decideApproval, interruptSession, restoreSessions, scanRepos,
-  sendToSession, startSession, stopSession,
+  openSessionOnDesk, sendToSession, startSession, stopSession,
 } from './sessions.ts';
 import { statusReport } from './status.ts';
 import { cleanDictation } from './dictation.ts';
-import { loadPicks, pollSpotify, spotifyAction, spotifyCallback, spotifyConfigured, spotifyLogin } from './integrations/spotify.ts';
-import { pollGoogle } from './integrations/google.ts';
-import { route, staticMap } from './integrations/maps.ts';
-import { loadContacts, pollMessages, sendMessage } from './integrations/comms.ts';
-import { demoHandle, demoPhotoSvg, demoPhotos, startDemo } from './demo.ts';
-import { photoImage, photosEnabled, queryPhotos, refreshPhotos } from './integrations/photos.ts';
-import { codes, loadVault, totpEnabled, tryUnlock, type TotpAccount } from './totp.ts';
+import { demoHandle, startDemo } from './demo.ts';
 import { installLink } from '../scripts/links.ts';
+import { handleHook, seedExternal } from './external.ts';
+import { notePid, startDeskWatch } from './desk.ts';
+import { codes, totpEnabled, tryUnlock, vaultNow, type TotpAccount } from './totp.ts';
 
 // ---------- auth ----------
 function tokenOk(t: string | null | undefined): boolean {
@@ -67,35 +64,32 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/healthz') return res.writeHead(200).end('ok');
 
+    // Claude Code hooks from every other session on this machine (see relay/src/external.ts).
+    if (url.pathname === '/hooks' && req.method === 'POST') {
+      if (!tokenOk(k)) return res.writeHead(401).end();
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const c of req) {
+        size += (c as Buffer).length;
+        if (size > 2 * 1024 * 1024) return res.writeHead(413).end();
+        chunks.push(c as Buffer);
+      }
+      let body: any = null;
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      } catch {
+        return res.writeHead(400).end('{}');
+      }
+      notePid(String(body?.session_id ?? ''), Number(req.headers['x-claude-pid']));
+      const out = config.demo ? {} : await handleHook(body);
+      return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out));
+    }
+
     if (url.pathname === '/install') {
       if (!tokenOk(k)) return res.writeHead(401).end('Add ?k=<SHELL_TOKEN>');
       const link = installLink(config.publicUrl || `https://${req.headers.host}`, config.token);
       const qr = await QRCode.toDataURL(link, { margin: 2, width: 360 });
       return res.writeHead(200, { 'content-type': 'text/html' }).end(installPage(link, qr));
-    }
-
-    if (url.pathname === '/spotify/login') {
-      if (!tokenOk(k)) return res.writeHead(401).end('Add ?k=<SHELL_TOKEN>');
-      if (!spotifyConfigured()) return res.writeHead(500).end('Set SPOTIFY_CLIENT_ID / SECRET / REDIRECT_URI in relay/.env');
-      return spotifyLogin(req, res);
-    }
-    if (url.pathname === '/spotify/callback') {
-      await spotifyCallback(url, res);
-      await Promise.all([pollSpotify(), loadPicks()]);
-      return;
-    }
-
-    if (url.pathname === '/api/maps/static') {
-      if (!tokenOk(k)) return res.writeHead(401).end();
-      return staticMap(res);
-    }
-
-    const img = /^\/api\/photos\/img\/([\w-]+)$/.exec(url.pathname);
-    if (img) {
-      if (!tokenOk(k)) return res.writeHead(401).end();
-      const size = url.searchParams.get('size') === 'full' ? 'full' : 'thumb';
-      if (config.demo) return res.writeHead(200, { 'content-type': 'image/svg+xml' }).end(demoPhotoSvg(img[1]));
-      return photoImage(img[1], size, res);
     }
 
     if (url.pathname.startsWith('/api/')) return res.writeHead(404).end();
@@ -121,10 +115,9 @@ server.on('upgrade', (req, socket, head) => {
 
 // 2FA unlock is per connection, never shared state.
 const unlocked = new WeakMap<WebSocket, number>();
-let vault: TotpAccount[] | null = null;
 const demoVault: TotpAccount[] = [
-  { id: 'd1', issuer: 'GitHub', account: 'karthik', secret: 'JBSWY3DPEHPK3PXP', algorithm: 'SHA1', digits: 6, period: 30 },
-  { id: 'd2', issuer: 'Discord', account: 'karthik', secret: 'KRSXG5CTMVRXEZLU', algorithm: 'SHA1', digits: 6, period: 30 },
+  { id: 'd1', issuer: 'GitHub', account: 'me', secret: 'JBSWY3DPEHPK3PXP', algorithm: 'SHA1', digits: 6, period: 30 },
+  { id: 'd2', issuer: 'Discord', account: 'me', secret: 'KRSXG5CTMVRXEZLU', algorithm: 'SHA1', digits: 6, period: 30 },
   { id: 'd3', issuer: 'AWS', account: 'root', secret: 'GEZDGNBVGY3TQOJQ', algorithm: 'SHA1', digits: 6, period: 30 },
 ];
 
@@ -163,13 +156,8 @@ function reply(ws: WebSocket, msg: ServerMsg) {
 async function handle(ws: WebSocket, msg: ClientMsg) {
   // Messages every mode handles the same way.
   switch (msg.t) {
-    case 'photos.query': {
-      const q = msg.q ?? '';
-      const offset = msg.offset ?? 0;
-      if (config.demo) return reply(ws, { t: 'photos.result', q, offset, ...demoPhotos(q, offset) });
-      if (!photosEnabled()) return reply(ws, { t: 'photos.result', q, offset, items: [], total: 0, error: 'Photos not set up (docs/INTEGRATIONS.md)' });
-      return reply(ws, { t: 'photos.result', q, offset, ...(await queryPhotos(q, offset)) });
-    }
+    case 'status.check':
+      return reply(ws, { t: 'status.report', report: await statusReport(config.demo ? state.sessions : allSessions()) });
     case 'totp.unlock': {
       if (!config.demo && !totpEnabled()) return reply(ws, { t: 'totp.locked', reason: '2FA not set up (docs/TWO_FACTOR.md)' });
       const r = config.demo
@@ -183,14 +171,17 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
     case 'totp.list': {
       const until = unlocked.get(ws) ?? 0;
       if (Date.now() > until) return reply(ws, { t: 'totp.locked' });
-      if (!config.demo) vault ??= loadVault();
-      return reply(ws, { t: 'totp.codes', codes: codes(config.demo ? demoVault : vault!), unlockedUntil: until });
+      let accounts: TotpAccount[];
+      try {
+        accounts = config.demo ? demoVault : vaultNow();
+      } catch (e) {
+        return reply(ws, { t: 'totp.locked', reason: `vault: ${(e as Error).message}` });
+      }
+      return reply(ws, { t: 'totp.codes', codes: codes(accounts), unlockedUntil: until });
     }
     case 'totp.lock':
       unlocked.delete(ws);
       return reply(ws, { t: 'totp.locked' });
-    case 'status.check':
-      return reply(ws, { t: 'status.report', report: await statusReport(config.demo ? state.sessions : allSessions()) });
     case 'dictation.clean':
       return reply(ws, {
         t: 'dictation.cleaned',
@@ -208,31 +199,9 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
     case 'refresh':
       if (!config.demo) {
         state.repos = scanRepos();
-        await Promise.all([pollSpotify(), pollGoogle(), pollMessages()]);
+        await seedExternal();
       }
       return hub.changed();
-    case 'route':
-      if (config.demo) {
-        return reply(ws, {
-          t: 'route.result',
-          route: {
-            destination: msg.destination,
-            durationMin: 12,
-            distanceKm: 0.9,
-            steps: [
-              { text: 'Head north on Valencia St', distanceM: 300 },
-              { text: 'Turn left onto 18th St', distanceM: 450 },
-              { text: 'Destination on the right', distanceM: 120 },
-            ],
-            mapUrl: null,
-          },
-        });
-      }
-      try {
-        return reply(ws, { t: 'route.result', route: await route(msg.destination, msg.from) });
-      } catch (e) {
-        return reply(ws, { t: 'route.result', route: null, error: (e as Error).message });
-      }
   }
 
   if (config.demo) {
@@ -249,6 +218,8 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       return sendToSession(msg.id, msg.text);
     case 'session.stop':
       return stopSession(msg.id);
+    case 'session.openDesk':
+      return reply(ws, { t: 'notify', text: await openSessionOnDesk(msg.id), level: 'good' });
     case 'session.interrupt':
       return interruptSession(msg.id);
     case 'approval.decide':
@@ -257,10 +228,6 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       return answerQuestion(msg.id, msg.answers);
     case 'ask':
       return askAll(msg.target, msg.text);
-    case 'spotify':
-      return spotifyAction(msg.action, msg.value);
-    case 'comms.send':
-      return sendMessage(msg.contactId, msg.text);
   }
 }
 
@@ -285,21 +252,15 @@ if (config.demo) {
   startDemo();
 } else {
   restoreSessions();
-  loadContacts();
-  const every = (ms: number, fn: () => unknown) => {
-    fn();
-    setInterval(() => hub.connected > 0 && fn(), ms);
-  };
-  every(5_000, pollSpotify);
-  every(10 * 60_000, loadPicks);
-  every(2 * 60_000, pollGoogle);
-  every(30_000, pollMessages);
-  if (photosEnabled()) refreshPhotos();
+  seedExternal();
+  startDeskWatch();
+  setInterval(seedExternal, 2 * 60_000);
   state.integrations.totp = totpEnabled();
-  every(60_000, () => {
+  setInterval(() => {
     state.repos = scanRepos();
+    state.integrations.totp = totpEnabled(); // lights up after `npm run 2fa:import`, no restart
     hub.changed();
-  });
+  }, 60_000);
 }
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {

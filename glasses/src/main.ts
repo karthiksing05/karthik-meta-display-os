@@ -1,16 +1,12 @@
 import './styles.css';
-import { connect, onMessage, store, token } from './store.ts';
+import { connect, onMessage, reloadApp, store, token } from './store.ts';
 import { currentScreen, initHistory, initKeys, onNavigate, restoreFocus, screenFor, go } from './nav.ts';
 import { wake } from './pixels.ts';
 import { esc, header, footer, C } from './ui.ts';
 import './screens/home.ts';
 import './screens/claude.ts';
 import './screens/compose.ts';
-import './screens/comms.ts';
-import './screens/spotify.ts';
-import './screens/day.ts';
 import './screens/settings.ts';
-import './screens/photos.ts';
 import './screens/twofa.ts';
 
 const app = document.getElementById('app')!;
@@ -25,6 +21,7 @@ function render() {
     // Don't rebuild the page while the composer is open: it would drop the text.
     const a = document.activeElement;
     if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;
+    if (store.stale) return reloadApp();
 
     document.body.classList.toggle('black', store.state?.settings.background === 'black');
     const { name, params } = currentScreen();
@@ -55,7 +52,7 @@ onMessage((m) => {
   if (m.t === 'notify') toast(esc(m.text), m.level);
   if (m.t === 'card') toast(`<div class="y">${esc(m.title)}</div><div class="small">${esc(m.body).replace(/\n/g, '<br>')}</div>`, 'info', 9000);
   if (m.t === 'error') toast(esc(m.text), 'error', 6000);
-  if (m.t === 'status.report' && currentScreen().name !== 'claude') go('claude');
+  if (m.t === 'status.report' && currentScreen().name !== 'report') go('report');
 });
 
 // Refresh relative times ("5m") once a minute even without new data.

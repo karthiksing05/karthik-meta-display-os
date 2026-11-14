@@ -25,6 +25,8 @@ export async function cleanDictation(text: string, context?: string): Promise<st
         model: config.groqModel,
         temperature: 0,
         max_tokens: 800,
+        // gpt-oss models think first; keep it short and out of the reply.
+        ...(config.groqModel.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low', include_reasoning: false } : {}),
         messages: [
           { role: 'system', content: SYSTEM + (context ? `\nContext (names you may see): ${context}` : '') },
           { role: 'user', content: raw },

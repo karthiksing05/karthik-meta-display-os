@@ -7,7 +7,8 @@
 - turns permission requests into **approval cards** and Claude's questions into the **question inbox**
 - gives every session an in-process **glasses MCP server** (`notify`, `show_card`, `ask_choice`)
 - answers **"how's everything going?"** across all sessions
-- cleans dictation with **Groq**, and polls **Spotify, Google, Maps and iMessage (BlueBubbles)**
+- shows your other Claude Code sessions (terminal, VS Code, Remote Control) through hooks
+- cleans dictated replies with **Groq** (optional)
 
 It runs anywhere with Node 20+: your Mac to start with, then an Oracle Cloud Always Free VM so it's
 up when your laptop sleeps.
@@ -45,6 +46,41 @@ and connectors), so anything you set up for Claude Code works here too.
 
 Sessions survive relay restarts: they come back as *stopped*, and sending a message resumes the
 same Claude conversation.
+
+## Your other Claude Code sessions (terminal, VS Code, Remote Control)
+
+The relay also shows every other Claude Code session on its machine, tagged `ext` on the lens.
+Remote Control sessions count: they run the normal CLI on your Mac.
+
+```bash
+npm run hooks -- install     # adds hooks to ~/.claude/settings.json (backup kept); `remove` undoes it
+```
+
+- **Live status:** prompts, tool use, todo progress and "done" arrive through the hooks. Sessions from
+  before the hooks (last 24 h) are listed from `~/.claude/projects` via the Agent SDK.
+- **Approvals and questions:** while the glasses app is open, permission prompts and
+  `AskUserQuestion` come to the lens (up to 10 min, then the normal prompt takes over). With the
+  app closed, nothing changes at your desk.
+- **Messages:** if the session is working, your message is delivered when it finishes the current
+  step (its Stop hook hands it to Claude). If it's idle, replying **continues that same session**
+  (same ID, same conversation, same row). Pick it up again at your desk (`claude --resume`, or keep
+  typing in Remote Control) and it's handed back. Avoid typing in it at the desk *while* the
+  relay is running it.
+- Pause and stop stay with wherever the session runs. The hook script does nothing when the relay
+  is down, and the relay's own sessions skip it.
+
+## Chats, quick phrases, connectors
+
+- **chat** (hub, sessions, or new): a one-off with no repo, in its own folder under `~/.claude-shell/chats`.
+  Sessions use your Claude Code login (`CLAUDE_AUTH=login`, the default), so your claude.ai connectors
+  (Gmail, Calendar, Drive, Slack, …) are available. Connect or authorize them at claude.ai → Settings →
+  Connectors; new ones show up in the next chat. Connector calls ask for approval like any tool; use
+  "↓ always" for the ones you trust. `CLAUDE_AUTH=token` uses the token instead (servers), without connectors.
+- **Quick phrases** (continue, lgtm, expand, …): one pinch sends them to a session, or from the hub
+  to the session picked with ▾ ("active sessions" = working or open and waiting, never stopped ones).
+  Edit `~/.claude-shell/data/phrases.json`; changes show within seconds.
+- **How's everything going?** runs a one-turn summary that is never saved, so it doesn't pile up in
+  your session lists. Old saved ones are deleted automatically.
 
 ## Approvals (no rules editor)
 
@@ -94,6 +130,5 @@ Logs: `journalctl -u claude-shell -f`. Backups: copy `~/.claude-shell/data` (tok
 | `/` | none (static UI) | glasses app |
 | `/ws?k=TOKEN` | token | all live data and commands (see `shared/protocol.ts`) |
 | `/install?k=TOKEN` | token | install QR page |
-| `/spotify/login?k=TOKEN` | token | one-time Spotify login |
-| `/api/maps/static?k=TOKEN` | token | map image for the current route |
+| `/hooks` (POST) | token header | Claude Code hook events from your other sessions |
 | `/healthz` | none | returns `ok` |

@@ -1,4 +1,4 @@
-import type { ClientMsg, RouteInfo, ServerMsg, ShellState, StatusReport } from '../../shared/protocol.ts';
+import type { ClientMsg, ServerMsg, ShellState, StatusReport } from '../../shared/protocol.ts';
 
 /**
  * Connection to the relay plus the latest state snapshot.
@@ -38,10 +38,10 @@ export const store = {
   connected: false,
   lastError: '' as string,
   report: null as StatusReport | null,
-  route: null as RouteInfo | null,
-  routeError: '' as string,
   /** Server clock minus ours, so "5m ago" is right even if the glasses clock drifts. */
   skew: 0,
+  /** A newer build of this app is on the relay; main.ts reloads when it's safe. */
+  stale: false,
   on(fn: Listener) {
     listeners.add(fn);
     return () => listeners.delete(fn);
@@ -61,8 +61,14 @@ export const onMessage = (fn: Hook) => {
   return () => hooks.delete(fn);
 };
 
+/** Show a toast from the app itself (e.g. "sent: lgtm"), same look as relay notifications. */
+export function localNotify(text: string, level: 'info' | 'good' | 'warn' | 'error' = 'good') {
+  for (const h of hooks) h({ t: 'notify', text, level });
+}
+
 // ---------- socket ----------
 let ws: WebSocket | null = null;
+let firstBuild: string | null = null;
 let retry = 0;
 const queue: string[] = [];
 
@@ -88,11 +94,13 @@ export function connect() {
     if (msg.t === 'state') {
       store.state = msg.state;
       store.skew = msg.state.serverTime - Date.now();
+      // First build we see is the one we're running; a different one means the app was rebuilt.
+      if (msg.state.build) {
+        firstBuild ??= msg.state.build;
+        if (msg.state.build !== firstBuild) store.stale = true;
+      }
     } else if (msg.t === 'status.report') {
       store.report = msg.report;
-    } else if (msg.t === 'route.result') {
-      store.route = msg.route;
-      store.routeError = msg.error ?? '';
     } else if (msg.t === 'error') {
       store.lastError = msg.text;
     }
@@ -146,3 +154,8 @@ export const device = { battery: null as number | null, charging: false };
     /* not available */
   }
 })();
+
+/** Load the new build. Carries the token in the URL in case localStorage didn't keep it. */
+export function reloadApp() {
+  location.replace(location.pathname + (token ? `?k=${encodeURIComponent(token)}` : ''));
+}

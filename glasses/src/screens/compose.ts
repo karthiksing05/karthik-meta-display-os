@@ -2,7 +2,6 @@ import { register, back, replace } from '../nav.ts';
 import { store, send, clean } from '../store.ts';
 import { C, btn, esc, footer, header } from '../ui.ts';
 import { on } from './util.ts';
-import { searchPhotos } from './photos.ts';
 
 /**
  * Composer: focusing the text box opens the glasses' own text input
@@ -13,9 +12,7 @@ type Target =
   | { kind: 'ask'; target: string; title: string }
   | { kind: 'session'; id: string; title: string }
   | { kind: 'new'; repo: string; title: string }
-  | { kind: 'answer'; questionId: string; question: string; title: string }
-  | { kind: 'comms'; contactId: string; title: string }
-  | { kind: 'photos'; title: string };
+  | { kind: 'answer'; questionId: string; question: string; title: string };
 
 let raw = '';
 let cleaned = '';
@@ -38,12 +35,6 @@ function deliver(p: Target, text: string) {
       return;
     case 'answer':
       send({ t: 'question.answer', id: p.questionId, answers: { [p.question]: text } });
-      break;
-    case 'comms':
-      send({ t: 'comms.send', contactId: p.contactId, text });
-      break;
-    case 'photos':
-      searchPhotos(text.replace(/[.!?]+$/, ''));
       break;
   }
   raw = cleaned = '';

@@ -16,7 +16,11 @@
     "dev:demo": "concurrently -n relay,glasses -c magenta,cyan \"DEMO=1 npm run dev -w relay\" \"npm run dev -w glasses\"",
     "qr": "npm run qr -w relay --",
     "typecheck": "npm run typecheck -w glasses && npm run typecheck -w relay",
-    "deploy": "bash deploy/update.sh"
+    "deploy": "bash deploy/update.sh",
+    "up": "bash deploy/up.sh",
+    "hooks": "npm run hooks -w relay --",
+    "2fa": "npm run 2fa:import -w relay --",
+    "doctor": "npm run doctor -w relay --"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

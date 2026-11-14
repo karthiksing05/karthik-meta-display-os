@@ -8,8 +8,8 @@
 │ compose: system composer → Groq cleanup → send    │       │ approvals.ts: preset + learned rules   │
 └───────────────────────────────────────────────────┘       │ glassesMcp.ts: notify/show_card/ask    │
                                                             │ status.ts: "how's everything going?"   │
-                                                            │ integrations/: spotify google maps     │
-                                                            │   comms (BlueBubbles)                  │
+                                                            │ external.ts: your other sessions       │
+                                                            │   (terminal/VS Code/RC) via hooks      │
                                                             └────────────────────────────────────────┘
 ```
 
@@ -39,7 +39,5 @@ the same way, and your answer is returned to Claude as the tool result.
 - [ ] Does a **held pinch** reach web apps? (could be push-to-talk)
 - [ ] System composer dictation quality for code-ish speech (before vs after Groq)
 - [ ] `navigator.getBattery()` works; Neural Band battery: confirm it's not exposed
-- [ ] `tel:` / `wa.me` / `facetime:` links: do they hand off to the built-in apps?
-- [ ] Meet link → phone joins, audio comes through the glasses
 - [ ] WebSocket stays up across lens sleep/wake (the app reconnects with backoff)
 - [ ] Gray vs black background: readability outdoors, battery

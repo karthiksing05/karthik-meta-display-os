@@ -39,7 +39,7 @@ your Mac over the VM for this.
    cd relay && npm run 2fa:import
    ```
    Paste the link(s), then press Enter on an empty line. Check with `npm run 2fa:import -- --list`.
-5. Restart the relay. Then **delete every copy of the export QR and link** (screenshots, notes, clipboard history).
+5. No restart needed: the 2fa tile turns on within a minute. Then **delete every copy of the export QR and link** (screenshots, notes, clipboard history).
 
 On the lens: **home → 2fa**, swipe your pattern, pinch. Codes show with a countdown.
 

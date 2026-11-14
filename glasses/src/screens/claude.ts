@@ -1,6 +1,7 @@
 import { register, go, back, replace } from '../nav.ts';
-import { store, send } from '../store.ts';
-import { C, ago, agoText, bar, btn, esc, footer, header, icon, statusColor } from '../ui.ts';
+import { store, send, localNotify } from '../store.ts';
+import { C, ago, agoText, bar, btn, esc, footer, header, icon, md, statusColor } from '../ui.ts';
+import { clearComposer, composerBox, mountComposer } from './composer.ts';
 import { on, onEach } from './util.ts';
 import type { Approval, Question, SessionInfo } from '../../../shared/protocol.ts';
 
@@ -8,6 +9,17 @@ import type { Approval, Question, SessionInfo } from '../../../shared/protocol.t
 // One big "how's everything going?" button, the question inbox, and an ask bar.
 let askTarget: 'all' | string = 'all';
 let checking = false;
+/** Which inline reply boxes are open: 'ask' on the hub, the session id on a session / conversation. */
+const open = new Set<string>();
+const toggle = (k: string, on: boolean) => (on ? open.add(k) : open.delete(k), store.emit());
+
+/** "How's everything going?": ask the relay for a report; the status screen opens when it lands. */
+function checkStatus() {
+  checking = true;
+  send({ t: 'status.check' });
+  localNotify("checking how everything's going…", 'info');
+  store.emit();
+}
 
 register('claude', {
   render() {
@@ -16,20 +28,13 @@ register('claude', {
     const approvals = s?.approvals ?? [];
     const questions = s?.questions ?? [];
     const r = store.report;
-    const targetName = askTarget === 'all' ? 'all sessions' : sessions.find((x) => x.id === askTarget)?.name ?? 'all sessions';
+    const targetName = askTarget === 'all' ? 'active sessions' : sessions.find((x) => x.id === askTarget)?.name ?? 'active sessions';
 
     const reportCard = r
-      ? `<div class="card">
-          <div class="label">claude · ${agoText(r.at)}</div>
-          <div>${esc(r.headline)}</div>
-          ${r.lines
-            .slice(0, 4)
-            .map(
-              (l) =>
-                `<div class="row small"><i class="status" style="background:${statusColor(l.status)}"></i><span class="y">${esc(l.session)}</span><span class="muted ellipsis grow">${esc(l.text)}</span></div>`,
-            )
-            .join('')}
-        </div>`
+      ? `<button class="item msg" data-f="report">
+          ${icon('pulse', 20, C.cyan)}<span class="grow"><span class="label">last check · ${agoText(r.at)} · ${r.lines.length} sessions</span>
+          <span class="clamp2" style="display:block">${esc(r.headline)}</span></span>
+        </button>`
       : '';
 
     const q = questions[0];
@@ -56,26 +61,32 @@ register('claude', {
       ${reportCard}
       ${aCard}
       ${qCard}
-      <div class="row">
+      ${
+        open.has('ask')
+          ? `<div class="label">ask ${esc(targetName)}</div>${composerBox('ask')}`
+          : `<div class="row">
         ${btn('ask', `ask ${esc(targetName)}…`, { icon: 'ask', cls: 'grow wide' })}
         ${btn('target', '▾', { cls: 'chip' })}
-      </div>
+      </div>`
+      }
+      <div class="label">quick send → ${esc(targetName)}</div>
+      <div class="btns">${(s?.phrases ?? []).map((p, i) => btn(`ph:${i}`, esc(p.label), { cls: 'chip' })).join('')}</div>
       <div class="btns">
         ${btn('sessions', `sessions · ${sessions.length}`, { icon: 'sessions' })}
         ${btn('new', 'new', { icon: 'plus' })}
-        ${btn('chip:tests', 'run the tests', { cls: 'chip' })}
-        ${btn('chip:summary', 'summarize changes', { cls: 'chip' })}
-        ${btn('chip:commit', 'commit what works', { cls: 'chip' })}
+        ${btn('chat', 'chat', { icon: 'ask' })}
       </div>
     </main>
     ${footer('pinch = select · ▾ cycles who you ask')}`;
   },
+  key(e) {
+    if (e.key === 'Escape' && open.has('ask')) return clearComposer('ask'), toggle('ask', false), true;
+    return false;
+  },
   mount(root) {
     const s = store.state;
-    on(root, 'status', () => {
-      checking = true;
-      send({ t: 'status.check' });
-    });
+    on(root, 'status', checkStatus);
+    on(root, 'report', () => go('report'));
     on(root, 'approvals', () => go('approval'));
     on(root, 'sessions', () => go('sessions'));
     on(root, 'new', () => go('newSession'));
@@ -84,13 +95,23 @@ register('claude', {
       askTarget = ids[(ids.indexOf(askTarget) + 1) % ids.length] ?? 'all';
       store.emit();
     });
-    on(root, 'ask', () => go('compose', { kind: 'ask', target: askTarget, title: 'ask claude' }));
-    const chips: Record<string, string> = {
-      tests: 'Run the test suite and tell me in one line what failed, if anything.',
-      summary: 'In two short sentences: what have you changed so far and what is left?',
-      commit: 'Commit the work that is done and passing, with a clear message. Do not push.',
-    };
-    onEach(root, 'chip:', (k) => send({ t: 'ask', target: askTarget, text: chips[k] }));
+    on(root, 'ask', () => toggle('ask', true));
+    mountComposer(
+      root,
+      'ask',
+      (text) => {
+        send({ t: 'ask', target: askTarget, text });
+        localNotify(`sent → ${targetName()}`);
+      },
+      () => toggle('ask', false),
+    );
+    onEach(root, 'ph:', (i) => {
+      const p = s?.phrases[Number(i)];
+      if (!p) return;
+      send({ t: 'ask', target: askTarget, text: p.text });
+      localNotify(`sent: ${p.label} → ${targetName()}`);
+    });
+    on(root, 'chat', () => go('compose', { kind: 'new', repo: '', title: 'chat with claude' }));
     const q = s?.questions[0];
     if (q) {
       onEach(root, 'qa:', (k) => {
@@ -101,102 +122,309 @@ register('claude', {
   },
 });
 
+function targetName() {
+  return askTarget === 'all' ? 'active sessions' : store.state?.sessions.find((x) => x.id === askTarget)?.name ?? 'active sessions';
+}
+
 // Stop the "checking…" label when the report lands.
 store.on(() => {
   if (checking && store.report && Date.now() - store.report.at < 60_000) checking = false;
 });
 
+// ---------------- "How's everything going?" report ----------------
+// Every session, one line each, ones waiting on you first. Pinch a line to open that session.
+register('report', {
+  render() {
+    const r = store.report;
+    if (!r) return `${header('status')}<main class="center muted">No report yet.</main>`;
+    const live = new Map((store.state?.sessions ?? []).map((x) => [x.id, x]));
+    let lastGroup = '';
+    const rows = r.lines
+      .map((l) => {
+        const now = live.get(l.id);
+        const status = now?.status ?? l.status;
+        const group = l.needsYou ? 'needs you' : status === 'running' || status === 'starting' ? 'working' : status === 'stopped' ? 'earlier' : 'your turn';
+        const head = group !== lastGroup ? `<div class="label">${group}</div>` : '';
+        lastGroup = group;
+        return `${head}<button class="item msg" data-f="rl:${l.id}"${l.needsYou ? ` style="border-color:${C.orange}"` : ''}>
+          <i class="status" style="background:${statusColor(status)};margin-top:6px"></i>
+          <span class="grow">
+            <span class="row"><span class="y ellipsis grow">${esc(l.session)}</span>${now ? `<span class="small muted">${ago(now.lastActivity)}</span>` : ''}</span>
+            <span class="small clamp2" style="display:block;color:${l.needsYou ? C.orange : C.cm}">${esc(l.text)}</span>
+          </span>
+        </button>`;
+      })
+      .join('');
+    return `${header('status', C.pink)}
+    <main class="scroll">
+      <div class="card"><div class="label">claude · ${agoText(r.at)}</div><div>${esc(r.headline)}</div></div>
+      ${btn('recheck', checking ? 'checking…' : 'check again', { icon: 'pulse', cls: 'chip' })}
+      <div class="list">${rows || '<div class="muted center">No sessions.</div>'}</div>
+    </main>
+    ${footer('swipe to scroll · pinch a session to open it')}`;
+  },
+  mount(root) {
+    onEach(root, 'rl:', (id) => (store.state?.sessions.some((x) => x.id === id) ? go('session', { id }) : localNotify('that session is gone')));
+    on(root, 'recheck', () => {
+      checking = true;
+      send({ t: 'status.check' });
+      store.emit();
+    });
+  },
+});
+
 // ---------------- Sessions list ----------------
+// Grouped so the ones that need you come first. `ext` = runs outside the shell (terminal, VS Code,
+// Remote Control); `chat` = a one-off with no repo.
+const GROUPS: [string, (x: SessionInfo, asks: Set<string>) => boolean][] = [
+  ['needs you', (x, asks) => asks.has(x.id) || x.status === 'waiting'],
+  ['working', (x) => x.status === 'running' || x.status === 'starting'],
+  ['your turn', (x) => x.status === 'idle' || x.status === 'done' || x.status === 'error'],
+  ['earlier', () => true],
+];
+
+function tags(x: SessionInfo) {
+  return `${x.source === 'external' ? '<span class="src c">ext</span>' : ''}${x.kind === 'chat' ? '<span class="src v">chat</span>' : ''}${
+    x.desk ? `<span class="src g">${x.desk === 'vscode' ? 'vs code' : 'term'}</span>` : ''
+  }`;
+}
+const deskName = (x: SessionInfo) => (x.desk === 'vscode' ? 'VS Code tab' : 'terminal');
+
 function sessionRow(x: SessionInfo) {
   return `<button class="item" data-f="s:${x.id}">
     <i class="status" style="background:${statusColor(x.status)}"></i>
     <span class="grow">
-      <span class="row"><span class="y ellipsis grow">${esc(x.name)}</span><span class="small muted">${esc(x.repo)} · ${ago(x.lastActivity)}</span></span>
-      <span class="small muted ellipsis" style="display:block">${esc(x.activity)}</span>
-      ${x.progress != null ? bar(x.progress, statusColor(x.status)) : ''}
+      <span class="row"><span class="y ellipsis grow">${esc(x.name)}</span>${tags(x)}<span class="small muted">${ago(x.lastActivity)}</span></span>
+      <span class="small ellipsis" style="display:block;color:${x.status === 'waiting' ? C.orange : C.cm}">${esc(x.activity || x.repo)}</span>
+      ${x.progress != null && x.status !== 'stopped' ? bar(x.progress, statusColor(x.status)) : ''}
     </span>
   </button>`;
 }
 
 register('sessions', {
   render() {
-    const list = store.state?.sessions ?? [];
+    const s = store.state;
+    const list = s?.sessions ?? [];
+    const asks = new Set([...(s?.approvals ?? []), ...(s?.questions ?? [])].map((a) => a.sessionId));
+    const placed = new Set<string>();
+    const groups = GROUPS.map(([label, test]) => {
+      const items = list.filter((x) => !placed.has(x.id) && test(x, asks)).sort((a, b) => b.lastActivity - a.lastActivity);
+      items.forEach((x) => placed.add(x.id));
+      return items.length ? `<div class="label">${label} · ${items.length}</div>${items.map(sessionRow).join('')}` : '';
+    }).join('');
     return `${header('sessions', C.pink)}
     <main class="scroll">
-      <div class="list">${list.map(sessionRow).join('') || '<div class="muted center">No sessions yet.</div>'}</div>
-      ${btn('new', 'new session', { icon: 'plus', cls: 'wide' })}
+      <div class="btns">${btn('new', 'new session', { icon: 'plus' })}${btn('chat', 'chat', { icon: 'ask' })}</div>
+      <div class="list">${groups || '<div class="muted center">No sessions yet.</div>'}</div>
     </main>
-    ${footer('pinch to open · back to hub')}`;
+    ${footer('pinch to open · ext = terminal / vs code / remote control')}`;
   },
   mount(root) {
     onEach(root, 's:', (id) => go('session', { id }));
     on(root, 'new', () => go('newSession'));
+    on(root, 'chat', () => go('compose', { kind: 'new', repo: '', title: 'chat with claude' }));
   },
 });
 
 // ---------------- One session ----------------
+// Top: what Claude last said (pinch to read it all). Then reply (box opens right here) + one-pinch
+// phrases. Then todos and controls.
+const lastClaude = (x: SessionInfo) => [...x.transcript].reverse().find((t) => t.role === 'claude');
+
+/** Reply button, or the reply box in its place once opened (same data-f key → focus lands in it). */
+function replyBox(x: SessionInfo, label: string, def = false) {
+  if (open.has(x.id)) return composerBox('reply', `reply to ${x.name}: pinch, then dictate or handwrite`);
+  return btn('reply', label, { icon: 'mic', def });
+}
+function mountReply(root: HTMLElement, x: SessionInfo | undefined, id: string) {
+  on(root, 'reply', () => toggle(id, true));
+  mountComposer(
+    root,
+    'reply',
+    (text) => {
+      send({ t: 'session.send', id, text });
+      localNotify(`sent → ${x?.name ?? 'session'}`);
+    },
+    () => toggle(id, false),
+  );
+}
+const closeReplyKey = (e: KeyboardEvent, id: string) => (e.key === 'Escape' && open.has(id) ? (clearComposer('reply'), toggle(id, false), true) : false);
+
 register('session', {
   render({ id }) {
-    const x = store.state?.sessions.find((s) => s.id === id);
+    const s = store.state;
+    const x = s?.sessions.find((v) => v.id === id);
     if (!x) return `${header('session')}<main class="center muted">Session not found.</main>`;
-    const lines = x.transcript.slice(-5);
-    const pending = store.state?.approvals.filter((a) => a.sessionId === id).length ?? 0;
+    const pending = s?.approvals.filter((a) => a.sessionId === id).length ?? 0;
+    const asked = s?.questions.find((q) => q.sessionId === id);
+    const ext = x.source === 'external';
+    const busy = x.status === 'running' || x.status === 'waiting' || x.status === 'starting';
+    const said = lastClaude(x);
+    const phrases = s?.phrases ?? [];
+    const replying = open.has(id);
+    const diff = x.kind === 'code' && x.diffStat.files ? `<span class="g">+${x.diffStat.added}</span><span class="p">−${x.diffStat.removed}</span><span class="v">${x.diffStat.files}f</span>` : '';
     return `${header(x.name, C.yellow)}
     <main class="scroll">
       <div class="row small"><i class="status" style="background:${statusColor(x.status)}"></i><span style="color:${statusColor(x.status)}">${x.status}</span>
-        <span class="c">${esc(x.branch)}</span><span class="grow"></span>
-        <span class="g">+${x.diffStat.added}</span><span class="p">−${x.diffStat.removed}</span><span class="v">${x.diffStat.files}f</span><span class="muted">$${x.costUsd.toFixed(2)}</span></div>
-      ${x.progress != null ? bar(x.progress, statusColor(x.status)) : ''}
+        <span class="c ellipsis">${esc(x.kind === 'chat' ? 'chat' : x.branch || x.repo)}</span>${tags(x)}<span class="grow"></span>${diff}${x.costUsd ? `<span class="muted">$${x.costUsd.toFixed(2)}</span>` : ''}</div>
+      ${x.progress != null && x.status !== 'stopped' ? bar(x.progress, statusColor(x.status)) : ''}
+      ${busy || !said ? `<div class="small ellipsis" style="color:${x.status === 'waiting' ? C.orange : C.cm}">${esc(x.activity)}</div>` : ''}
+      ${
+        said
+          ? `<button class="item msg" data-f="said"><span class="grow"><span class="label" style="display:block">claude · ${agoText(said.at)} · pinch to read all</span><span class="clamp6" style="display:block">${md(said.text)}</span></span></button>`
+          : ''
+      }
+      <div class="btns">
+        ${pending ? btn('approve', `approve (${pending})`, { cls: 'primary', icon: 'check', def: true }) : ''}
+        ${asked ? btn('answer', 'answer question', { cls: 'primary', icon: 'ask', def: !pending }) : ''}
+        ${replying ? '' : replyBox(x, ext && busy ? 'reply · after this step' : 'reply', !pending && !asked)}
+        ${btn('history', 'conversation', { icon: 'comms' })}
+        ${busy ? '' : btn('desk', x.desk ? `${x.desk === 'vscode' ? 'vs code' : 'terminal'} ↗` : 'open on laptop', { icon: 'laptop' })}
+      </div>
+      ${replying ? replyBox(x, '') : ''}
+      ${
+        replying && x.desk && !busy
+          ? `<div class="small o">open in a ${deskName(x)} on your laptop: that window won't show this reply. Close it after, then "open on laptop".</div>`
+          : ''
+      }
+      <div class="btns">${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'chip', icon: 'pulse' })}${phrases.map((p, i) => btn(`ph:${i}`, esc(p.label), { cls: 'chip' })).join('')}</div>
       ${
         x.todos.length
           ? `<div class="card small">${x.todos
-              .slice(0, 5)
-              .map((t) => `<div class="${t.done ? 'g' : ''}">${t.done ? '✓' : '·'} ${esc(t.text)}</div>`)
+              .slice(0, 6)
+              .map((t) => `<div class="${t.done ? 'g' : ''} ellipsis">${t.done ? '✓' : '·'} ${esc(t.text)}</div>`)
               .join('')}</div>`
           : ''
       }
-      <div class="card small">${
-        lines
-          .map((l) => `<div class="clamp2"><span class="${l.role === 'you' ? 'p' : l.role === 'claude' ? 'c' : 'muted'}">${l.role}</span> ${esc(l.text)}</div>`)
-          .join('') || '<span class="muted">nothing yet</span>'
-      }</div>
       <div class="btns">
-        ${pending ? btn('approve', `approve (${pending})`, { cls: 'primary', icon: 'check', def: true }) : ''}
-        ${btn('reply', 'reply', { icon: 'mic', def: !pending })}
-        ${btn('status', 'how is it going?', { icon: 'pulse' })}
-        ${x.status === 'running' ? btn('interrupt', 'pause', { icon: 'pause' }) : ''}
-        ${x.status !== 'stopped' ? btn('stop', 'stop', { icon: 'stop' }) : ''}
+        ${!ext && x.status === 'running' ? btn('interrupt', 'pause', { icon: 'pause' }) : ''}
+        ${!ext && busy ? btn('stop', 'stop', { icon: 'stop' }) : ''}
       </div>
     </main>
-    ${footer('reply opens the composer · dictate or handwrite')}`;
+    ${footer(replying ? 'pinch the box to talk · back closes it' : ext && busy ? 'running elsewhere · replies are delivered when it finishes this step' : 'pinch a phrase to send it · reply to dictate')}`;
   },
+  key: (e, { id }) => closeReplyKey(e, id),
   mount(root, { id }) {
+    const s = store.state;
+    const x = s?.sessions.find((v) => v.id === id);
     on(root, 'approve', () => go('approval', { sessionId: id }));
-    on(root, 'reply', () => go('compose', { kind: 'session', id, title: 'reply' }));
-    on(root, 'status', () => send({ t: 'session.send', id, text: 'Quick status: one or two short sentences, what is done and what is next?' }));
+    on(root, 'answer', () => go('claude'));
+    on(root, 'history', () => go('transcript', { id }));
+    on(root, 'status', checkStatus);
+    on(root, 'desk', () => {
+      send({ t: 'session.openDesk', id });
+      localNotify('opening on your laptop…', 'info');
+    });
+    const said = x && lastClaude(x);
+    on(root, 'said', () => {
+      if (x && said) go('message', { title: x.name, role: 'claude', at: said.at, text: said.text });
+    });
+    mountReply(root, x, id);
+    onEach(root, 'ph:', (i) => {
+      const p = s?.phrases[Number(i)];
+      if (!p) return;
+      send({ t: 'session.send', id, text: p.text });
+      localNotify(`sent: ${p.label} → ${x?.name ?? 'session'}`);
+    });
     on(root, 'interrupt', () => send({ t: 'session.interrupt', id }));
     on(root, 'stop', () => send({ t: 'session.stop', id }));
   },
 });
 
-// ---------------- New session: pick a repo, then dictate the task ----------------
+// ---------------- Conversation: the whole transcript, one focusable entry per message ----------------
+// Runs of tool calls are folded into one line. Long messages are cut short here: pinch one to open
+// it in the reader, where up/down scrolls through that message alone and back returns here.
+function foldedRows(x: SessionInfo) {
+  const rows: { role: string; text: string; at: number }[] = [];
+  for (const t of x.transcript) {
+    const prev = rows[rows.length - 1];
+    if (t.role === 'tool' && prev?.role === 'tool') {
+      prev.text += ` · ${t.text}`;
+      prev.at = t.at;
+    } else rows.push({ ...t });
+  }
+  return rows.slice(-40);
+}
+const ROLE_CLS: Record<string, string> = { you: 'p', claude: 'c', tool: 'muted', steps: 'muted', system: 'o' };
+
+register('transcript', {
+  render({ id }) {
+    const x = store.state?.sessions.find((v) => v.id === id);
+    if (!x) return `${header('conversation')}<main class="center muted">Session not found.</main>`;
+    const replying = open.has(id);
+    const items = foldedRows(x)
+      .map(
+        (r, i, all) => `<button class="item msg" data-f="m:${i}" ${i === all.length - 1 && !replying ? 'data-default' : ''}>
+          <span class="grow"><span class="row small"><span class="${ROLE_CLS[r.role] ?? ''}">${r.role === 'tool' ? 'steps' : r.role}</span><span class="grow"></span><span class="muted">${ago(r.at)}</span></span>
+          ${r.role === 'tool' ? `<span class="small muted clamp2" style="display:block">${esc(r.text)}</span>` : `<span class="clamp6" style="display:block">${md(r.text)}</span>`}</span>
+        </button>`,
+      )
+      .join('');
+    return `${header(x.name, C.yellow)}
+    <main class="scroll"><div class="list">${items || '<div class="muted center">Nothing yet.</div>'}</div>
+      ${replyBox(x, 'reply')}</main>
+    ${footer(replying ? 'pinch the box to talk · back closes it' : 'swipe ↑ for older · pinch a message to read it all')}`;
+  },
+  key: (e, { id }) => closeReplyKey(e, id),
+  mount(root, { id }) {
+    const x = store.state?.sessions.find((v) => v.id === id);
+    if (!x) return;
+    const rows = foldedRows(x);
+    onEach(root, 'm:', (i) => {
+      const r = rows[Number(i)];
+      if (!r) return;
+      const tool = r.role === 'tool';
+      go('message', { title: x.name, role: tool ? 'steps' : r.role, at: r.at, text: tool ? r.text.split(' · ').join('\n') : r.text });
+    });
+    mountReply(root, x, id);
+  },
+});
+
+// ---------------- Message reader: one message, full length ----------------
+// Up/down scroll through this message only; pinch or back returns to where you were.
+register('message', {
+  render({ title, role, at, text }) {
+    return `${header(title, C.yellow)}
+    <main class="reader">
+      <div class="row small"><span class="${ROLE_CLS[role] ?? 'muted'}">${esc(role)}</span><span class="grow"></span><span class="muted">${agoText(at)}</span></div>
+      ${role === 'steps' ? `<div class="pre small">${esc(text)}</div>` : md(text)}
+      <div class="muted small center" style="padding:12px 0">· end ·</div>
+    </main>
+    ${footer('swipe ↑↓ to scroll · pinch or back to return')}`;
+  },
+  key(e) {
+    const main = document.querySelector<HTMLElement>('main.reader');
+    if (!main) return false;
+    const step = Math.round(main.clientHeight * 0.7);
+    if (e.key === 'ArrowDown') main.scrollBy({ top: step });
+    else if (e.key === 'ArrowUp') main.scrollBy({ top: -step });
+    else if (e.key === 'Enter') back();
+    else return e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+    return true;
+  },
+});
+
+// ---------------- New session: a chat, or pick a repo; then dictate the task ----------------
 register('newSession', {
   render() {
     const repos = store.state?.repos ?? [];
-    return `${header('new session', C.pink)}
+    return `${header('new', C.pink)}
     <main class="scroll">
-      <div class="label">pick a repo · each session gets its own branch and worktree</div>
+      <button class="item" data-f="chat" data-default>${icon('ask', 20, C.purple)}<span class="grow"><span class="y" style="display:block">chat with claude</span><span class="small muted">no repo · gmail, calendar, drive and your other connectors</span></span></button>
+      <div class="label">code · pick a repo (recent first) · gets its own branch and worktree</div>
       <div class="list">${
-        repos.map((r) => `<button class="item" data-f="r:${esc(r)}">${icon('sessions', 20, C.cyan)}<span class="y">${esc(r)}</span></button>`).join('') ||
+        repos.map((r) => `<button class="item" data-f="r:${esc(r)}">${icon('sessions', 20, C.cyan)}<span class="y ellipsis">${esc(r)}</span></button>`).join('') ||
         '<div class="muted">No repos found in REPOS_DIR on the relay.</div>'
       }</div>
     </main>
-    ${footer('pinch a repo, then say what to do')}`;
+    ${footer('pinch, then say what you want')}`;
   },
   mount(root) {
-    onEach(root, 'r:', (repo) => replace('compose', { kind: 'new', repo, title: `new · ${repo}` }));
+    on(root, 'chat', () => replace('compose', { kind: 'new', repo: '', title: 'chat with claude' }));
+    onEach(root, 'r:', (repo) => replace('compose', { kind: 'new', repo, title: `new · ${repo.split('/').pop()}` }));
   },
 });
+
 
 // ---------------- Approval card ----------------
 // Gestures: → approve · ← deny · ↓ always (teaches the preset) · back = decide later

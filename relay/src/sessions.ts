@@ -5,11 +5,13 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SessionInfo, TranscriptItem } from '../../shared/protocol.ts';
-import { config } from './config.ts';
+import { claudeEnv, config } from './config.ts';
 import { hub, state } from './hub.ts';
 import { load, save } from './store.ts';
 import { decide, previewFor, ruleFor, titleFor } from './approvals.ts';
-import { glassesMcp, GLASSES_PROMPT } from './glassesMcp.ts';
+import { CHAT_PROMPT, glassesMcp, GLASSES_PROMPT, WORKTREE_NOTE } from './glassesMcp.ts';
+import { deskOf, onDeskChange, openOnDesk } from './desk.ts';
+import { externalAnswer, externalDecide, externalList, externalSend, forgetExternal } from './external.ts';
 
 const run = promisify(execFile);
 const MAX_TRANSCRIPT = 60;
@@ -52,6 +54,10 @@ interface Saved {
   sdkSessionId: string | null;
   startedAt: number;
   costUsd: number;
+  /** code = repo session; chat = one-off with no repo. Missing on sessions saved by older versions (= code). */
+  kind?: 'code' | 'chat';
+  /** An outside session (terminal / VS Code / Remote Control) the relay continued in place, same session ID. */
+  adopted?: boolean;
 }
 
 interface Live {
@@ -68,16 +74,38 @@ const pendingQuestions = new Map<string, (answers: Record<string, string>) => vo
 
 // ---------- repos & worktrees ----------
 
+/**
+ * Git repos under REPOS_DIR, up to 3 levels deep (e.g. "MPI-Research/persona-translation").
+ * Stops descending at the first .git; skips hidden folders, node_modules and the like.
+ */
 export function scanRepos(): string[] {
-  try {
-    return fs
-      .readdirSync(config.reposDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && fs.existsSync(path.join(config.reposDir, d.name, '.git')))
-      .map((d) => d.name)
-      .sort();
-  } catch {
-    return [];
-  }
+  const out: string[] = [];
+  const SKIP = new Set(['node_modules', 'Library', 'dist', 'build', 'venv', '.venv', '__pycache__']);
+  const walk = (rel: string, depth: number) => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(path.join(config.reposDir, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const d of entries) {
+      if (!d.isDirectory() || d.name.startsWith('.') || SKIP.has(d.name)) continue;
+      const r = rel ? `${rel}/${d.name}` : d.name;
+      if (fs.existsSync(path.join(config.reposDir, r, '.git'))) out.push(r);
+      else if (depth < 3) walk(r, depth + 1);
+    }
+  };
+  walk('', 1);
+  // Most recently used first (git touches .git/index on commits, checkouts and adds).
+  const used = (r: string) => {
+    for (const f of ['index', 'HEAD']) {
+      try {
+        return fs.statSync(path.join(config.reposDir, r, '.git', f)).mtimeMs;
+      } catch {}
+    }
+    return 0;
+  };
+  return out.map((r) => [r, used(r)] as const).sort((a, b) => b[1] - a[1]).map(([r]) => r);
 }
 
 function slug(s: string) {
@@ -88,7 +116,7 @@ async function makeWorktree(repo: string, name: string, id: string) {
   const repoPath = path.join(config.reposDir, repo);
   if (!fs.existsSync(path.join(repoPath, '.git'))) throw new Error(`${repo} is not a git repo in ${config.reposDir}`);
   const branch = `shell/${slug(name)}-${id.slice(0, 4)}`;
-  const worktree = path.join(config.worktreesDir, `${repo}-${slug(name)}-${id.slice(0, 4)}`);
+  const worktree = path.join(config.worktreesDir, `${repo.replace(/[\\/]/g, '-')}-${slug(name)}-${id.slice(0, 4)}`);
   await run('git', ['-C', repoPath, 'worktree', 'add', '-b', branch, worktree, 'HEAD']);
   const { stdout } = await run('git', ['-C', worktree, 'rev-parse', 'HEAD']);
   return { branch, worktree, base: stdout.trim() };
@@ -117,11 +145,21 @@ function persist() {
   save('sessions', [...live.values()].map((l) => l.saved));
 }
 
-function publish() {
-  state.sessions = [...live.values()]
-    .map((l) => l.info)
-    .sort((a, b) => b.lastActivity - a.lastActivity);
+export function publish() {
+  state.sessions = [...[...live.values()].map((l) => l.info), ...externalList()].sort((a, b) => b.lastActivity - a.lastActivity);
+  for (const s of state.sessions) {
+    const d = deskOf(s.id);
+    if (d) s.desk = d;
+    else delete s.desk;
+  }
   hub.changed();
+}
+onDeskChange(publish);
+
+/** Claude session IDs the relay runs itself (so hooks from them are ignored). */
+export function ownsSdkSession(sdkId: string) {
+  for (const l of live.values()) if (l.saved.sdkSessionId === sdkId) return true;
+  return false;
 }
 
 function log(l: Live, role: TranscriptItem['role'], text: string) {
@@ -141,7 +179,7 @@ export function restoreSessions() {
       q: null,
       abort: null,
       info: {
-        id: s.id, name: s.name, repo: s.repo, branch: s.branch, status: 'stopped',
+        id: s.id, name: s.name, repo: s.repo, branch: s.branch, status: 'stopped', source: 'shell', cwd: s.worktree, kind: s.kind ?? 'code',
         startedAt: s.startedAt, lastActivity: s.startedAt, activity: 'stopped · send a message to resume',
         progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], costUsd: s.costUsd,
       },
@@ -151,18 +189,22 @@ export function restoreSessions() {
   publish();
 }
 
+/** repo '' starts a one-off chat: no repo, its own empty folder, your connectors available. */
 export async function startSession(repo: string, prompt: string, name?: string): Promise<string> {
   const id = randomUUID();
-  const title = name?.trim() || prompt.split(/[.\n]/)[0].slice(0, 40);
-  const { branch, worktree, base } = await makeWorktree(repo, title, id);
-  const saved: Saved = { id, name: title, repo, branch, worktree, base, sdkSessionId: null, startedAt: Date.now(), costUsd: 0 };
+  const title = name?.trim() || prompt.split(/[.?!\n]/)[0].slice(0, 40) || 'chat';
+  const kind = repo ? 'code' : 'chat';
+  let branch = '', worktree: string, base = '';
+  if (kind === 'code') ({ branch, worktree, base } = await makeWorktree(repo, title, id));
+  else fs.mkdirSync((worktree = path.join(config.chatsDir, `${slug(title)}-${id.slice(0, 4)}`)), { recursive: true });
+  const saved: Saved = { id, name: title, repo: repo || 'chat', branch, worktree, base, sdkSessionId: null, startedAt: Date.now(), costUsd: 0, kind };
   const l: Live = {
     saved,
     inbox: null,
     q: null,
     abort: null,
     info: {
-      id, name: title, repo, branch, status: 'starting', startedAt: saved.startedAt, lastActivity: Date.now(),
+      id, name: title, repo: saved.repo, branch, status: 'starting', source: 'shell', cwd: worktree, kind, startedAt: saved.startedAt, lastActivity: Date.now(),
       activity: 'starting', progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], costUsd: 0,
     },
   };
@@ -189,8 +231,11 @@ function spawn(l: Live, firstMessage: string) {
       abortController: abort,
       model: config.claudeModel,
       resume: l.saved.sdkSessionId ?? undefined,
+      // Marks this as the relay's own process, so the Claude Shell hooks skip it (no double approvals).
+      // In login mode it also drops the token so your login (and claude.ai connectors) are used.
+      env: claudeEnv({ CLAUDE_SHELL_OWNED: '1' }),
       settingSources: ['user', 'project', 'local'],
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: GLASSES_PROMPT },
+      systemPrompt: { type: 'preset', preset: 'claude_code', append: l.info.kind === 'chat' ? CHAT_PROMPT : l.saved.adopted ? GLASSES_PROMPT : `${GLASSES_PROMPT}\n${WORKTREE_NOTE}` },
       mcpServers: {
         glasses: glassesMcp({
           sessionId: sid,
@@ -228,6 +273,7 @@ function handle(l: Live, msg: SDKMessage) {
     case 'system':
       if ('subtype' in msg && msg.subtype === 'init') {
         l.saved.sdkSessionId = msg.session_id;
+        forgetExternal(msg.session_id);
         persist();
       }
       break;
@@ -264,10 +310,12 @@ function handle(l: Live, msg: SDKMessage) {
       const lastText = [...l.info.transcript].reverse().find((t) => t.role === 'claude')?.text;
       if (msg.subtype === 'success' && msg.result && msg.result.slice(0, 2000) !== lastText) log(l, failed ? 'system' : 'claude', msg.result);
       persist();
-      diffStat(l.saved.worktree, l.saved.base).then((d) => {
-        l.info.diffStat = d;
-        publish();
-      });
+      if (l.saved.adopted && !failed) syncToLaptop(l);
+      if (l.info.kind === 'code')
+        diffStat(l.saved.worktree, l.saved.base).then((d) => {
+          l.info.diffStat = d;
+          publish();
+        });
       break;
     }
     default:
@@ -350,6 +398,7 @@ function askQuestion(
 // ---------- commands from the glasses ----------
 
 export function decideApproval(id: string, decision: 'allow' | 'deny' | 'always') {
+  if (externalDecide(id, decision)) return;
   const resolve = pendingApprovals.get(id);
   const a = state.approvals.find((x) => x.id === id);
   if (!resolve || !a) return;
@@ -361,12 +410,13 @@ export function decideApproval(id: string, decision: 'allow' | 'deny' | 'always'
 }
 
 export function answerQuestion(id: string, answers: Record<string, string>) {
+  if (externalAnswer(id, answers)) return;
   pendingQuestions.get(id)?.(answers);
 }
 
 export function sendToSession(id: string, text: string) {
   const l = live.get(id);
-  if (!l) return;
+  if (!l) return externalSend(id, text);
   log(l, 'you', text);
   if (l.inbox && l.q && !['stopped', 'error'].includes(l.info.status)) {
     l.inbox.push(text);
@@ -375,6 +425,58 @@ export function sendToSession(id: string, text: string) {
     spawn(l, text); // resumes the saved Claude session
   }
   publish();
+}
+
+// ---------- keeping the laptop in sync ----------
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const deskName = (d: string) => (d === 'vscode' ? 'VS Code tab' : 'terminal');
+
+/** Let the relay's own process for this session finish, so the laptop can take the session over. */
+async function letGo(l: Live) {
+  if (!l.q || ['starting', 'running', 'waiting'].includes(l.info.status)) return;
+  l.inbox?.close();
+  for (let i = 0; i < 20 && l.info.status !== 'stopped' && l.info.status !== 'error'; i++) await sleep(150);
+  await sleep(500);
+}
+
+/**
+ * The glasses just finished a turn on a session from your laptop. A window that's already open there
+ * can't refresh, so: if it isn't open, open it (it loads fresh with every turn); if it is, say it's
+ * out of date. Waits a little first, so a quick follow-up from the glasses doesn't bounce around.
+ */
+async function syncToLaptop(l: Live) {
+  if (!state.settings.syncToLaptop || config.demo) return;
+  const turns = l.info.transcript.length;
+  await sleep(15_000);
+  if (live.get(l.info.id) !== l || l.info.status !== 'idle' || l.info.transcript.length !== turns) return;
+  const d = deskOf(l.info.id);
+  if (d) {
+    l.info.activity = `done · your ${deskName(d)} for this is out of date: close it, then "open on laptop"`;
+    return publish();
+  }
+  await letGo(l);
+  try {
+    const how = await openOnDesk(l.info.id, l.saved.worktree || l.info.cwd);
+    l.info.activity = `done · ${how}, up to date`;
+  } catch (e) {
+    l.info.activity = `done · couldn't open on laptop: ${(e as Error).message}`;
+  }
+  publish();
+}
+
+/** "open on laptop" from the lens. */
+export async function openSessionOnDesk(id: string): Promise<string> {
+  const l = live.get(id);
+  const info = l?.info ?? externalList().find((s) => s.id === id);
+  if (!info) throw new Error('session not found');
+  if (['starting', 'running', 'waiting'].includes(info.status)) throw new Error('still working: open it when this step is done');
+  const d = deskOf(id);
+  if (d) {
+    await openOnDesk(id, l?.saved.worktree || info.cwd, d); // brings it to the front
+    return `already open in a ${deskName(d)}. If it's out of date, close it and pinch again`;
+  }
+  if (l) await letGo(l);
+  return openOnDesk(id, l?.saved.worktree || info.cwd);
 }
 
 export async function interruptSession(id: string) {
@@ -391,11 +493,59 @@ export function stopSession(id: string) {
   publish();
 }
 
+/** Sessions "all" means: working right now, or open and waiting for you. Never wakes stopped or idle-elsewhere ones. */
+export function activeIds(): string[] {
+  const busy = ['starting', 'running', 'waiting'];
+  return allSessions()
+    .filter((s) => busy.includes(s.status) || (s.source === 'shell' && s.status === 'idle' && Boolean(live.get(s.id)?.q)))
+    .map((s) => s.id);
+}
+
 export function askAll(target: 'all' | string, text: string) {
-  const ids = target === 'all' ? [...live.keys()].filter((id) => live.get(id)!.info.status !== 'done') : [target];
+  const ids = target === 'all' ? activeIds() : [target];
+  if (!ids.length) throw new Error('No active sessions. Open one to send it a message.');
   for (const id of ids) sendToSession(id, text);
 }
 
 export function allSessions() {
-  return [...live.values()].map((l) => l.info);
+  return [...[...live.values()].map((l) => l.info), ...externalList()];
+}
+
+/**
+ * Continue an outside Claude Code session (terminal, VS Code, Remote Control) from the glasses,
+ * IN PLACE: same session ID, same conversation, same folder, same row on the lens. The relay resumes
+ * it while it's idle there. If you pick it up again at your desk, its hooks hand it back
+ * (releaseAdopted), so it never shows twice.
+ */
+export function continueExternal(ext: SessionInfo, text: string): string {
+  const id = ext.id; // the Claude session ID
+  const saved: Saved = {
+    id, name: ext.name, repo: ext.repo, branch: ext.branch, worktree: ext.cwd ?? '', base: '',
+    sdkSessionId: id, startedAt: ext.startedAt, costUsd: ext.costUsd, kind: ext.kind, adopted: true,
+  };
+  const l: Live = {
+    saved, inbox: null, q: null, abort: null,
+    info: { ...ext, source: 'shell', status: 'starting', activity: 'continuing', transcript: [...ext.transcript] },
+  };
+  live.set(id, l);
+  persist();
+  log(l, 'you', text);
+  spawn(l, text);
+  publish();
+  return id;
+}
+
+/**
+ * A hook arrived for a session the relay continued: you picked it up again elsewhere. Give it back
+ * (returns its info so the outside view keeps the transcript). Returns null if the relay is still
+ * running it right now, or doesn't have it.
+ */
+export function releaseAdopted(sdkId: string): SessionInfo | null {
+  const l = live.get(sdkId);
+  if (!l?.saved.adopted) return null;
+  if (l.q && ['starting', 'running', 'waiting'].includes(l.info.status)) return null;
+  l.inbox?.close();
+  live.delete(sdkId);
+  persist();
+  return l.info;
 }

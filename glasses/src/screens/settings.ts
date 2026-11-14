@@ -11,6 +11,7 @@ const PRESET_NOTE: Record<Settings['approvals'], string> = {
   careful: 'asks for everything but reads',
   balanced: 'tests, builds, worktree edits pass',
   trusting: 'asks only for risky commands',
+  everything: 'auto-approves EVERYTHING, risky commands included',
 };
 
 register('settings', {
@@ -29,15 +30,14 @@ register('settings', {
         ${tile('animation', 'bolt', 'home animation', st.animation)}
         ${tile('background', 'glasses', 'background', st.background, st.background === 'black' ? 'see-through, saves battery' : 'monokai gray')}
         ${tile('cleanup', 'mic', 'dictation cleanup', st.dictationCleanup ? 'on' : 'off', i.groq ? 'groq' : 'local (no groq key)')}
-        ${tile('battery', 'glasses', 'battery', `glasses ${device.battery ?? '—'}%`, 'band: see Meta AI app')}
+        ${tile('battery', 'laptop', 'mac', `${s.host.battery ?? '—'}%${s.host.charging ? ' ⚡' : ''}`, `wi-fi ${s.host.wifi === 'connected' ? (s.host.ssid ?? 'on') : s.host.wifi ?? '—'} · glasses ${device.battery ?? '—'}%`)}
+        ${tile('sync', 'laptop', 'laptop sync', st.syncToLaptop ? 'on' : 'off', st.syncToLaptop ? 'reopens sessions after glasses replies' : 'use "open on laptop"')}
         ${tile('refresh', 'pulse', 'refresh', store.connected ? 'relay ok' : 'offline', 'pinch to re-sync')}
       </div>
-      <div class="small muted">${esc(PRESET_NOTE[st.approvals])}. Dangerous commands always ask.</div>
+      <div class="small muted">${esc(PRESET_NOTE[st.approvals])}${st.approvals === 'everything' ? '' : '. Dangerous commands always ask.'}</div>
       ${st.learnedRules.length ? `<div class="card small"><div class="label">learned with ↓ always</div>${st.learnedRules.slice(-5).map((r) => `<div class="c">${esc(r)}</div>`).join('')}</div>${btn('clear', 'forget learned', { icon: 'x' })}` : ''}
       <div class="card small">
-        claude ${ok(i.claude)} · groq ${ok(i.groq)} · spotify ${ok(i.spotify)}<br>
-        google ${ok(i.google)} · maps ${ok(i.maps)} · imessage ${ok(i.messages)}<br>
-        photos ${ok(i.photos)} · 2fa ${ok(i.totp)}${i.demo ? '<br><span class="v">demo mode: data is fake</span>' : ''}
+        claude ${ok(i.claude)} · groq ${ok(i.groq)}${i.demo ? '<br><span class="v">demo mode: data is fake</span>' : ''}
       </div>
     </main>
     ${footer('pinch a tile to change it')}`;
@@ -46,10 +46,11 @@ register('settings', {
     const st = store.state?.settings;
     if (!st) return;
     const set = (patch: Partial<Settings>) => send({ t: 'settings.set', patch });
-    on(root, 'approvals', () => set({ approvals: cycle(['careful', 'balanced', 'trusting'] as const, st.approvals) }));
+    on(root, 'approvals', () => set({ approvals: cycle(['careful', 'balanced', 'trusting', 'everything'] as const, st.approvals) }));
     on(root, 'animation', () => set({ animation: cycle(['wave', 'rain', 'life', 'off'] as const, st.animation) }));
     on(root, 'background', () => set({ background: st.background === 'gray' ? 'black' : 'gray' }));
     on(root, 'cleanup', () => set({ dictationCleanup: !st.dictationCleanup }));
+    on(root, 'sync', () => set({ syncToLaptop: !st.syncToLaptop }));
     on(root, 'refresh', () => send({ t: 'refresh' }));
     on(root, 'clear', () => send({ t: 'rules.clear' }));
   },

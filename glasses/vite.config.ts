@@ -9,7 +9,6 @@ export default defineConfig({
     proxy: {
       '/ws': { target: 'ws://localhost:8787', ws: true },
       '/api': 'http://localhost:8787',
-      '/spotify': 'http://localhost:8787',
       '/install': 'http://localhost:8787',
     },
   },

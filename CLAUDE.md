@@ -17,7 +17,9 @@ A web app for Meta Ray-Ban Display glasses (`glasses/`) plus a Node relay (`rela
   cyan = labels, purple = numbers, grey = comments. Font: JetBrains Mono.
 - Protocol changes go in `shared/protocol.ts` first; both sides typecheck against it.
 - The relay sends full state snapshots; screens are pure `render(params) → html` + `mount()` for handlers.
-- Secrets and API keys live only on the relay. 2FA codes never go into the shared state.
+- Secrets and API keys live only on the relay.
+- Scope: Claude session monitoring, plus opt-in 2FA codes (docs/TWO_FACTOR.md). Don't add features the glasses' own OS already has
+  (music, maps, messages, calls, photos).
 - Claude only: never add Meta AI, WebMCP or Meta connector integrations.
 
 ## Checks

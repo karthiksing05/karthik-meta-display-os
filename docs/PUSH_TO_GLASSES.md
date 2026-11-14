@@ -5,7 +5,7 @@ Meta Ray-Ban Display runs **web apps from an HTTPS URL**. There's nothing to sid
 the new version the next time the app opens.
 
 The relay serves the glasses app itself, so **one HTTPS address covers everything**
-(app, WebSocket, Spotify login, map images).
+(app and WebSocket).
 
 ```
 glasses ──(phone's internet)──▶ https://your-relay/  ──▶ relay (Mac or Oracle VM)
@@ -119,7 +119,6 @@ On the VM: `cd ~/claude-shell && git pull && npm run build && sudo systemctl res
 | Thumb swipe up/down/left/right | ArrowUp/Down/Left/Right | move focus. On the approval card: → approve, ← deny, ↓ always |
 | Index pinch | Enter | select |
 | Middle-finger tap | back (Escape / browser history) | back |
-| Pinch + twist | system volume | volume (Spotify audio plays through the glasses) |
 | Text fields | system composer | dictate, handwrite or type, then cleaned by Groq |
 
 ## Troubleshooting
@@ -130,9 +129,7 @@ On the VM: `cd ~/claude-shell && git pull && npm run build && sudo systemctl res
 | Install fails or "can't open" | URL must be HTTPS with a valid certificate. Plain `http://` and LAN IPs are rejected |
 | "No relay token" screen | You opened the app without `?k=`. Reinstall from the QR |
 | Red dot in the header (relay offline) | Relay not running, or the tunnel is down. Check `curl https://<url>/healthz` |
-| Spotify says "not connected" | Do the one-time login in `docs/INTEGRATIONS.md` |
 | Band battery shows "—" | Expected. Meta doesn't expose the Neural Band's battery to web apps (yet). Glasses battery uses `navigator.getBattery()` |
 
-Still to test on real hardware (phase 0): whether `tel:` and `wa.me` links hand off to the
-built-in call/WhatsApp apps, whether a held pinch reaches web apps, and how the system composer's
+Still to test on real hardware (phase 0): whether a held pinch reaches web apps, and how the system composer's
 dictation performs for code. See `docs/ARCHITECTURE.md → Phase 0 checklist`.

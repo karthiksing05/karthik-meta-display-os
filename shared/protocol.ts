@@ -25,6 +25,19 @@ export interface SessionInfo {
   diffStat: { files: number; added: number; removed: number };
   transcript: TranscriptItem[];
   costUsd: number;
+  /**
+   * shell = started by the relay (own worktree, full control).
+   * external = any other Claude Code session on the relay's machine (terminal, VS Code, Remote Control),
+   * seen through hooks. Approvals and questions work; messages are delivered when it next stops,
+   * or continue it on the relay as a fork if it's idle.
+   */
+  source: 'shell' | 'external';
+  /** Working directory. */
+  cwd?: string;
+  /** code = a repo session (own worktree, or an outside session in a repo); chat = a one-off with no repo. */
+  kind: 'code' | 'chat';
+  /** Open on the laptop right now (a VS Code tab or a terminal). Those windows don't refresh on their own. */
+  desk?: 'vscode' | 'terminal';
 }
 
 export interface Approval {
@@ -54,72 +67,47 @@ export interface Question {
   at: number;
 }
 
-export interface Track {
-  title: string;
-  artist: string;
-  album: string;
-  art: string | null;
-  durationMs: number;
-  progressMs: number;
-  playing: boolean;
-  volume: number | null;
-  device: string | null;
+/** everything = auto-approve every tool call, in every session (nothing asks). */
+export type ApprovalPreset = 'careful' | 'balanced' | 'trusting' | 'everything';
+
+export interface Settings {
+  approvals: ApprovalPreset;
+  animation: 'wave' | 'rain' | 'life' | 'off';
+  background: 'gray' | 'black';
+  dictationCleanup: boolean;
+  /** After the glasses finish a turn on a laptop session, reopen it there so it shows everything. */
+  syncToLaptop: boolean;
+  learnedRules: string[];
 }
 
-export interface Pick {
-  uri: string;
-  title: string;
-  art: string | null;
+export interface Integrations {
+  claude: boolean;
+  groq: boolean;
+  /** 2FA codes set up (TOTP_PASSPHRASE + TOTP_UNLOCK + an imported vault). */
+  totp: boolean;
+  demo: boolean;
 }
 
-export interface AgendaItem {
-  id: string;
-  title: string;
-  start: number;
-  end: number;
-  location: string | null;
-  meetUrl: string | null;
+/** A one-pinch reply. `label` is shown on the chip, `text` is what Claude receives. */
+export interface Phrase {
+  label: string;
+  text: string;
 }
 
-export interface MailItem {
-  id: string;
-  from: string;
-  subject: string;
-  snippet: string;
-  at: number;
-  unread: boolean;
-}
-
-export interface Contact {
-  id: string;
-  name: string;
-  initials: string;
-  phone?: string;
-  /** Has WhatsApp: the pane offers it, and hands off to the built-in app. */
-  whatsapp?: boolean;
-  /** BlueBubbles chat GUID for iMessage threads. */
-  chatGuid?: string;
-  lastText?: string;
-  lastAt?: number;
-  lastSource?: 'messages' | 'whatsapp' | 'call';
-  unread?: number;
-}
-
-export interface RouteInfo {
-  destination: string;
-  durationMin: number;
-  distanceKm: number;
-  steps: { text: string; distanceM: number }[];
-  /** Relay URL of a static map image (key stays on the relay). */
-  mapUrl: string | null;
-}
-
-export interface PhotoItem {
-  id: string;
-  date: number;
-  title: string;
-  place: string | null;
-  favorite: boolean;
+export interface ShellState {
+  sessions: SessionInfo[];
+  approvals: Approval[];
+  questions: Question[];
+  repos: string[];
+  /** Quick replies (DATA_DIR/phrases.json). */
+  phrases: Phrase[];
+  settings: Settings;
+  integrations: Integrations;
+  serverTime: number;
+  /** The Mac the relay runs on: battery and Wi-Fi (polled every 30 s). */
+  host: HostInfo;
+  /** Changes when the glasses app is rebuilt; the lens reloads itself to pick up the new version. */
+  build: string;
 }
 
 export interface TotpCode {
@@ -132,68 +120,38 @@ export interface TotpCode {
   remaining: number;
 }
 
-export type ApprovalPreset = 'careful' | 'balanced' | 'trusting';
-
-export interface Settings {
-  approvals: ApprovalPreset;
-  animation: 'wave' | 'rain' | 'life' | 'off';
-  background: 'gray' | 'black';
-  dictationCleanup: boolean;
-  learnedRules: string[];
-}
-
-export interface Integrations {
-  claude: boolean;
-  groq: boolean;
-  spotify: boolean;
-  google: boolean;
-  maps: boolean;
-  messages: boolean;
-  photos: boolean;
-  totp: boolean;
-  demo: boolean;
-}
-
-export interface ShellState {
-  sessions: SessionInfo[];
-  approvals: Approval[];
-  questions: Question[];
-  repos: string[];
-  track: Track | null;
-  picks: Pick[];
-  agenda: AgendaItem[];
-  mail: MailItem[];
-  contacts: Contact[];
-  settings: Settings;
-  integrations: Integrations;
-  bookmarks: { name: string; url: string }[];
-  favorites: { name: string; address: string }[];
-  serverTime: number;
+export interface HostInfo {
+  battery: number | null;
+  charging: boolean;
+  /** connected = Wi-Fi joined with an address; off = radio off; down = on but not joined; null = no Wi-Fi port. */
+  wifi: 'connected' | 'down' | 'off' | null;
+  ssid?: string;
 }
 
 export interface StatusReport {
   at: number;
   headline: string;
-  lines: { session: string; status: SessionStatus; text: string }[];
+  /** Every session, ones waiting on you first. `text` = a one-line summary of where it stands. */
+  lines: { id: string; session: string; status: SessionStatus; needsYou: boolean; text: string }[];
 }
 
 // ---------- client → relay ----------
 export type ClientMsg =
+  /** repo '' = a one-off chat with no repo (connectors available). */
   | { t: 'session.start'; repo: string; prompt: string; name?: string }
   | { t: 'session.send'; id: string; text: string }
   | { t: 'session.stop'; id: string }
+  /** Open this session on the laptop (VS Code tab or terminal), freshly loaded. */
+  | { t: 'session.openDesk'; id: string }
   | { t: 'session.interrupt'; id: string }
   | { t: 'approval.decide'; id: string; decision: 'allow' | 'deny' | 'always' }
   | { t: 'question.answer'; id: string; answers: Record<string, string> }
   | { t: 'ask'; target: 'all' | string; text: string }
   | { t: 'status.check' }
   | { t: 'dictation.clean'; reqId: string; text: string; context?: string }
-  | { t: 'spotify'; action: 'play' | 'pause' | 'next' | 'prev' | 'volume' | 'playUri'; value?: number | string }
-  | { t: 'comms.send'; contactId: string; text: string }
-  | { t: 'route'; destination: string; from?: { lat: number; lng: number } }
   | { t: 'settings.set'; patch: Partial<Settings> }
   | { t: 'rules.clear' }
-  | { t: 'photos.query'; q?: string; offset?: number }
+  /** 2FA: unlock with the swipe pattern; codes go only to this connection. */
   | { t: 'totp.unlock'; seq: string[] }
   | { t: 'totp.list' }
   | { t: 'totp.lock' }
@@ -203,11 +161,9 @@ export type ClientMsg =
 export type ServerMsg =
   | { t: 'state'; state: ShellState }
   | { t: 'status.report'; report: StatusReport }
-  | { t: 'dictation.cleaned'; reqId: string; text: string }
-  | { t: 'route.result'; route: RouteInfo | null; error?: string }
-  | { t: 'notify'; text: string; level: 'info' | 'good' | 'warn' | 'error'; sessionId?: string }
-  | { t: 'card'; sessionId: string; title: string; body: string }
-  | { t: 'photos.result'; q: string; items: PhotoItem[]; total: number; offset: number; error?: string }
   | { t: 'totp.codes'; codes: TotpCode[]; unlockedUntil: number }
   | { t: 'totp.locked'; reason?: string; triesLeft?: number }
+  | { t: 'dictation.cleaned'; reqId: string; text: string }
+  | { t: 'notify'; text: string; level: 'info' | 'good' | 'warn' | 'error'; sessionId?: string }
+  | { t: 'card'; sessionId: string; title: string; body: string }
   | { t: 'error'; text: string };

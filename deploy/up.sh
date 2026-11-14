@@ -11,7 +11,7 @@
 # relay/, shared/ or relay/.env restart the relay. The tunnel (and so the QR) stays the same.
 #
 # Options: --demo  --tunnel tailscale|cloudflare  --no-prompt  --no-watch  --no-open
-# (The Claude Shell menu bar app runs this with --no-prompt --no-open.)
+# (The ClaudeProd menu bar app runs this with --no-prompt --no-open.)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -193,8 +193,8 @@ npm run qr -w relay -- "$URL" 2>/dev/null | grep -v '^>' || die "QR generation f
 
 cat <<EOF
 $(say "Ready")
-  1. iPhone camera → scan the QR → the Meta AI app asks to add "Claude Shell" (unverified is expected).
-  2. Open Claude Shell on the glasses. Green dot in the header = connected.
+  1. iPhone camera → scan the QR → the Meta AI app asks to add "Claude Productivity For Meta Display" (unverified is expected).
+  2. Open ClaudeProd on the glasses. Green dot in the header = connected.
   Logs: relay/.logs/relay.log · relay/.logs/tunnel.log     Ctrl-C stops the relay and tunnel.
 $([ "$WATCH" = 1 ] && echo "  Keep this running while you edit: changes go live without rescanning.")
 EOF

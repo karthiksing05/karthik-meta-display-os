@@ -10,7 +10,7 @@ export function appUrl(publicUrl: string, token: string): string {
   return u.toString();
 }
 
-export function installLink(publicUrl: string, token: string, name = 'Claude Shell'): string {
+export function installLink(publicUrl: string, token: string, name = 'Claude Productivity For Meta Display'): string {
   const params = new URLSearchParams({ appName: name, appUrl: appUrl(publicUrl, token) });
   return `fb-viewapp://web_app_deep_link?${params.toString()}`;
 }

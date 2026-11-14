@@ -17,7 +17,7 @@ register('home', {
         <span class="s">${sub}</span>
       </button>`;
 
-    return `${header('claude shell', C.pink)}
+    return `${header('claudeprod', C.pink)}
     <main>
       <canvas class="pixels" id="pixels"></canvas>
       <div class="tiles">

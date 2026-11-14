@@ -34,6 +34,10 @@ final class Relay: ObservableObject {
     @Published var log: [String] = []
     @Published var doctorOutput = ""
     @Published var doctorRunning = false
+    /// Install QR window: the address in the QR and how the last refresh went.
+    @Published var installURL = ""
+    @Published var installState = ""
+    @Published var installBusy = false
 
     @Published var autoStart: Bool { didSet { UserDefaults.standard.set(autoStart, forKey: "autoStart") } }
     @Published var demo: Bool { didSet { UserDefaults.standard.set(demo, forKey: "demo") } }
@@ -199,6 +203,95 @@ final class Relay: ObservableObject {
     }
 
     var ownsRelay: Bool { proc != nil }
+
+    // MARK: install QR
+
+    /// Runs a command with the app's PATH; returns (exit code, output).
+    private func run(_ args: [String]) async -> (Int32, String) {
+        await withCheckedContinuation { cont in
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            p.arguments = args
+            p.currentDirectoryURL = URL(fileURLWithPath: repo)
+            var e = ProcessInfo.processInfo.environment
+            e["PATH"] = childPath
+            e["NO_COLOR"] = "1"
+            p.environment = e
+            let pipe = Pipe()
+            p.standardOutput = pipe
+            p.standardError = pipe
+            p.terminationHandler = { proc in
+                let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                cont.resume(returning: (proc.terminationStatus, out))
+            }
+            do { try p.run() } catch { cont.resume(returning: (-1, error.localizedDescription)) }
+        }
+    }
+
+    /// The tunnel's address right now: Tailscale's hostname, or the newest Cloudflare quick-tunnel URL.
+    private func liveTunnelURL(current: String) async -> String {
+        if current.contains(".ts.net") || current.isEmpty {
+            let (code, out) = await run(["tailscale", "status", "--json"])
+            if code == 0, let data = out.data(using: .utf8),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let me = json["Self"] as? [String: Any], let dns = me["DNSName"] as? String, !dns.isEmpty {
+                return "https://" + dns.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            }
+        }
+        if let log = try? String(contentsOfFile: "\(repo)/relay/.logs/tunnel.log", encoding: .utf8),
+           let re = try? NSRegularExpression(pattern: "https://[a-z0-9-]+\\.trycloudflare\\.com"),
+           let last = re.matches(in: log, range: NSRange(log.startIndex..., in: log)).last,
+           let r = Range(last.range, in: log) {
+            return String(log[r])
+        }
+        return current
+    }
+
+    private func setEnv(_ key: String, _ value: String) {
+        guard var text = try? String(contentsOfFile: envFile, encoding: .utf8) else { return }
+        let lines = text.components(separatedBy: "\n")
+        if let i = lines.firstIndex(where: { $0.hasPrefix("\(key)=") }) {
+            var l = lines
+            l[i] = "\(key)=\(value)"
+            text = l.joined(separator: "\n")
+        } else {
+            text += (text.hasSuffix("\n") ? "" : "\n") + "\(key)=\(value)\n"
+        }
+        try? text.write(toFile: envFile, atomically: true, encoding: .utf8)
+    }
+
+    /// "Install QR": refresh the public address, regenerate the QR, and check the address answers.
+    func refreshInstall() async {
+        guard !installBusy else { return }
+        installBusy = true
+        defer { installBusy = false }
+        await poll()
+        guard let s = status else { installState = "Start the relay first."; return }
+        installState = "refreshing the address…"
+        let url = await liveTunnelURL(current: s.publicUrl)
+        guard url.hasPrefix("https://") else { installState = "No public address yet (is the tunnel up?)."; return }
+        if env("PUBLIC_URL") != url {
+            setEnv("PUBLIC_URL", url) // the relay restarts with it (it watches relay/.env)
+        }
+        installURL = url
+        installState = "making the QR…"
+        let (code, out) = await run(["npm", "run", "-s", "qr", "-w", "relay", "--", url])
+        if code != 0 {
+            installState = "QR failed: " + (out.split(separator: "\n").last.map(String.init) ?? "exit \(code)")
+            return
+        }
+        installState = "checking \(url.replacingOccurrences(of: "https://", with: "")) answers…"
+        var ok = false
+        if let health = URL(string: url + "/healthz") {
+            for _ in 0..<6 where !ok {
+                var req = URLRequest(url: health)
+                req.timeoutInterval = 5
+                if let (_, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200 { ok = true }
+                else { try? await Task.sleep(nanoseconds: 1_500_000_000) }
+            }
+        }
+        installState = ok ? "up to date · reachable from your phone" : "QR updated, but the address isn't answering yet (DNS can lag a minute)"
+    }
 
     // MARK: tools
 

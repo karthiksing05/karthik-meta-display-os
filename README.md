@@ -1,4 +1,4 @@
-# Claude Shell for Meta Ray-Ban Display
+# Claude Productivity For Meta Display (ClaudeProd)
 
 Claude Code session monitoring for your glasses: see every session on your Mac (including terminal,
 VS Code and Remote Control), approve with a swipe, answer questions, ask "how's everything going?",
@@ -14,10 +14,10 @@ Meta-Display-Customs/
 └── docs/           how-tos (start with PUSH_TO_GLASSES.md)
 ```
 
-## The Mac app (easiest)
+## The Mac app: ClaudeProd (easiest)
 
 ```bash
-npm run app        # builds "Claude Shell.app" into ~/Applications and opens it
+npm run app        # builds "ClaudeProd.app" into ~/Applications and opens it
 ```
 
 The logo appears in your menu bar (coloured while the relay runs, grey when stopped). It runs

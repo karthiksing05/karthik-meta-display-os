@@ -46,7 +46,7 @@ struct ClaudeShellApp: App {
         }
         .windowResizability(.contentSize)
 
-        Window("Claude Shell checkup", id: "doctor") {
+        Window("ClaudeProd checkup", id: "doctor") {
             DoctorWindow().environmentObject(relay)
         }
     }
@@ -84,7 +84,7 @@ struct Panel: View {
         HStack(spacing: 10) {
             Image(nsImage: Icon.appIcon(size: 40)).resizable().frame(width: 40, height: 40)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Claude Shell").font(.system(.headline, design: .monospaced))
+                Text("ClaudeProd").font(.system(.headline, design: .monospaced))
                 Text(phaseLabel).font(.caption).foregroundStyle(phaseColor)
             }
             Spacer()
@@ -163,7 +163,11 @@ struct Panel: View {
                 }
             }
             HStack(spacing: 8) {
-                small("Install QR", "qrcode") { openWindow(id: "qr"); NSApp.activate(ignoringOtherApps: true) }
+                small("Install QR", "qrcode") {
+                    openWindow(id: "qr")
+                    NSApp.activate(ignoringOtherApps: true)
+                    Task { await relay.refreshInstall() }
+                }
                 small("Preview", "eyeglasses") { if let u = relay.lensPreviewURL { NSWorkspace.shared.open(u) } }
                 small("Checkup", "stethoscope") { relay.runDoctor(); openWindow(id: "doctor"); NSApp.activate(ignoringOtherApps: true) }
             }
@@ -187,7 +191,7 @@ struct Panel: View {
     private var settings: some View {
         VStack(alignment: .leading, spacing: 6) {
             Toggle("Start the relay when the app opens", isOn: $relay.autoStart)
-            Toggle("Open Claude Shell at login", isOn: Binding(get: { relay.launchAtLogin }, set: { relay.setLaunchAtLogin($0) }))
+            Toggle("Open ClaudeProd at login", isOn: Binding(get: { relay.launchAtLogin }, set: { relay.setLaunchAtLogin($0) }))
             Toggle("Demo data (no real sessions)", isOn: $relay.demo)
             HStack {
                 Text("Tunnel")
@@ -252,12 +256,24 @@ struct QRWindow: View {
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text("1. Point your iPhone camera at the QR.")
-                Text("2. The Meta AI app asks to add Claude Shell (\"unverified\" is expected).")
-                Text("3. Open Claude Shell on the glasses. A green dot means connected.")
+                Text("2. The Meta AI app asks to add \"Claude Productivity For Meta Display\" (\"unverified\" is expected).")
+                Text("3. Open ClaudeProd on the glasses. A green dot means connected.")
             }
             .font(.callout)
             Text("Developer Mode must be on: Meta AI app → Settings → App info → tap the version 5×.")
                 .font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                if relay.installBusy { ProgressView().controlSize(.small) }
+                VStack(alignment: .leading, spacing: 2) {
+                    if !relay.installURL.isEmpty {
+                        Text(relay.installURL.replacingOccurrences(of: "https://", with: ""))
+                            .font(.system(.caption, design: .monospaced)).foregroundStyle(Color.mCyan).lineLimit(1).truncationMode(.middle)
+                    }
+                    Text(relay.installState).font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Refresh") { Task { await relay.refreshInstall() } }.disabled(relay.installBusy)
+            }
         }
         .padding(20)
         .frame(width: 380)

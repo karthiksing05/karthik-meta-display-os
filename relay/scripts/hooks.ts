@@ -98,7 +98,7 @@ if (cmd === 'install') {
     (s.hooks[ev] ??= []).push(entry);
   }
   write(s);
-  console.log(`Installed Claude Shell hooks for: ${Object.keys(EVENTS).join(', ')}`);
+  console.log(`Installed ClaudeProd hooks for: ${Object.keys(EVENTS).join(', ')}`);
   console.log(`  settings: ${SETTINGS}  (backup: settings.json.bak-claude-shell)`);
   console.log(`  script:   ${HOOK}`);
   console.log('Sessions you start from now on show up live on the lens. Already-open sessions pick');
@@ -106,7 +106,7 @@ if (cmd === 'install') {
 } else if (cmd === 'remove') {
   write(strip(read()));
   fs.rmSync(HOOK, { force: true });
-  console.log('Removed the Claude Shell hooks. Your other settings are unchanged.');
+  console.log('Removed the ClaudeProd hooks. Your other settings are unchanged.');
 } else {
   const on = installed(read());
   console.log(on.length ? `Installed for: ${on.join(', ')}` : 'Not installed. Run: npm run hooks -w relay -- install');

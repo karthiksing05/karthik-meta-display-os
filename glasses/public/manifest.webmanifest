@@ -1,7 +1,7 @@
 {
-  "name": "Claude Shell",
-  "short_name": "Claude",
-  "description": "Steer Claude Code sessions and glance at your day from your glasses.",
+  "name": "Claude Productivity For Meta Display",
+  "short_name": "ClaudeProd",
+  "description": "Watch, steer and approve your Claude Code sessions from your glasses.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#272822",

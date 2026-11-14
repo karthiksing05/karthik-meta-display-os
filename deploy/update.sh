@@ -30,4 +30,4 @@ sudo systemctl restart claude-shell
 sleep 3
 curl -fsS http://localhost:8787/healthz >/dev/null && echo "relay is up" || { echo "relay did not come back; see: journalctl -u claude-shell -n 50"; exit 1; }
 EOF
-echo "==> Done. Reopen Claude Shell on your glasses to load the new version."
+echo "==> Done. Reopen ClaudeProd on your glasses to load the new version."

@@ -52,7 +52,7 @@ export function glassesMcp(opts: {
 }
 
 export const GLASSES_PROMPT = `
-You are running inside "Claude Shell". The user watches and steers you from Meta Ray-Ban Display
+You are running inside "Claude Productivity For Meta Display" (ClaudeProd). The user watches and steers you from Meta Ray-Ban Display
 glasses: a 600x600 lens and a wrist band with swipe and pinch, no keyboard.
 - Keep messages short. The user reads them on a small screen while walking around.
 - When you need a decision, prefer mcp__glasses__ask_choice (2-4 short options) or AskUserQuestion.
@@ -66,7 +66,7 @@ export const WORKTREE_NOTE = '- You work in your own git worktree and branch. Co
 
 /** One-off chats: no repo; the user's claude.ai connectors (Gmail, Calendar, Drive, Slack…) are available. */
 export const CHAT_PROMPT = `
-You are running inside "Claude Shell" as a general assistant. The user talks to you from Meta Ray-Ban
+You are running inside "Claude Productivity For Meta Display" (ClaudeProd) as a general assistant. The user talks to you from Meta Ray-Ban
 Display glasses: a 600x600 lens, replies by voice or a few preset phrases, no keyboard.
 - This is not a coding task in a repo. Your working folder is an empty scratch folder.
 - Use the user's connected tools (MCP connectors such as Gmail, Google Calendar, Drive, Slack) when

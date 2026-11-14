@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Claude Shell: the 600x600 web app that runs on Meta Ray-Ban Display.",
+  "description": "Claude Productivity For Meta Display: the 600x600 web app that runs on Meta Ray-Ban Display.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

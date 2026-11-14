@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Claude Shell mark, the same as the glasses web app's icon (glasses/public/icon-512.png):
+/// The ClaudeProd mark, the same as the glasses web app's icon (glasses/public/icon-512.png):
 /// a Monokai asterisk (pink, orange, green and cyan bars) with a white centre.
 /// One drawing routine makes both the app icon and the menu bar icon.
 enum Icon {

@@ -251,9 +251,9 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
 }
 
 function installPage(link: string, qr: string) {
-  return `<!doctype html><meta name=viewport content="width=device-width"><title>Install Claude Shell</title>
+  return `<!doctype html><meta name=viewport content="width=device-width"><title>Install ClaudeProd</title>
 <body style="background:#272822;color:#F8F8F2;font:16px ui-monospace,monospace;padding:24px;max-width:520px">
-<h2 style="color:#FF6188">Install Claude Shell</h2>
+<h2 style="color:#FF6188">Install Claude Productivity For Meta Display</h2>
 <p>Scan with your phone's camera. The Meta AI app opens and asks to add the app to your glasses.</p>
 <img src="${qr}" width=320 height=320 style="background:#fff;padding:8px;border-radius:8px">
 <p>On the phone itself? <a style="color:#66D9EF" href="${link}">Tap here instead</a>.</p>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Claude Shell menu bar app and install it in ~/Applications.
+# Build the ClaudeProd menu bar app ("Claude Productivity For Meta Display") and install it in ~/Applications.
 #
 #   npm run app            build, install, open
 #   npm run app -- --no-open
@@ -10,8 +10,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/mac/build"
-APP="$OUT/Claude Shell.app"
-DEST="$HOME/Applications/Claude Shell.app"
+APP="$OUT/ClaudeProd.app"
+DEST="$HOME/Applications/ClaudeProd.app"
+OLD="$HOME/Applications/Claude Shell.app"   # its name before the rename
 OPEN=1
 [ "${1:-}" = "--no-open" ] && OPEN=0
 
@@ -43,8 +44,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Claude Shell</string>
-  <key>CFBundleDisplayName</key><string>Claude Shell</string>
+  <key>CFBundleName</key><string>ClaudeProd</string>
+  <key>CFBundleDisplayName</key><string>Claude Productivity For Meta Display</string>
   <key>CFBundleIdentifier</key><string>dev.claudeshell.menubar</string>
   <key>CFBundleExecutable</key><string>ClaudeShell</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
@@ -66,10 +67,10 @@ codesign --force --deep --sign - "$APP" >/dev/null
 say "Installing to ~/Applications"
 mkdir -p "$HOME/Applications"
 # Quit a running copy first, so the new one takes over (and reopen it after, even with --no-open).
-pgrep -f "Claude Shell.app/Contents/MacOS/ClaudeShell" >/dev/null && OPEN=1
+pgrep -f "Contents/MacOS/ClaudeShell" >/dev/null && OPEN=1
 osascript -e 'tell application id "dev.claudeshell.menubar" to quit' >/dev/null 2>&1 || true
 sleep 1
-rm -rf "$DEST"
+rm -rf "$DEST" "$OLD"
 cp -R "$APP" "$DEST"
 # Make Finder / Launchpad pick up the new icon.
 touch "$DEST"
@@ -77,7 +78,7 @@ touch "$DEST"
 
 if [ "$OPEN" = 1 ]; then
   open "$DEST"
-  say "Claude Shell is in your menu bar (the rainbow sunglasses)."
+  say "ClaudeProd is in your menu bar (the rainbow asterisk)."
 else
   say "Built: $DEST"
 fi

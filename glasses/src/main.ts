@@ -27,7 +27,7 @@ function render() {
     const { name, params } = currentScreen();
     const screen = screenFor(name) ?? screenFor('home')!;
     if (!token) {
-      app.innerHTML = `${header('claude shell', C.pink)}<main class="center"><div>
+      app.innerHTML = `${header('claudeprod', C.pink)}<main class="center"><div>
         <div class="y">No relay token.</div>
         <div class="small muted">Install the app from your relay's /install page<br>(or open this URL with ?k=YOUR_TOKEN once).</div>
       </div></main>${footer('see docs/PUSH_TO_GLASSES.md')}`;

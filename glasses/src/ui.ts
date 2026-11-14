@@ -99,13 +99,20 @@ function battery(level: number | null, label: string, ic: string, charging = fal
   return `<span class="batt" title="${label}">${icon(ic, 18, C.cm)}<b style="color:${color}">${level == null ? '—' : level + '%'}</b>${charging ? icon('bolt', 12, C.yellow) : ''}</span>`;
 }
 
+/** The app's name for headers: "claude" letter by letter in the rainbow, "prod" in white. */
+export const BRAND = '\u0000brand';
+function brand() {
+  const rainbow = [C.pink, C.orange, C.yellow, C.green, C.cyan, C.purple];
+  return [...'claude'].map((ch, i) => `<span style="color:${rainbow[i]}">${ch}</span>`).join('') + `<span style="color:${C.fg}">prod</span>`;
+}
+
 /** Top bar on every screen: title, connection dot, glasses + Mac battery, Mac Wi-Fi, clock.
  *  (The Neural Band's battery isn't exposed to web apps: getBattery() reports the glasses only.) */
 export function header(title: string, color = C.yellow) {
   const s = store.state;
   const dot = store.connected ? C.green : C.pink;
   return `<header>
-    <span class="title" style="color:${color}">${esc(title)}</span>
+    <span class="title" style="color:${color}">${title === BRAND ? brand() : esc(title)}</span>
     <span class="hdr-right">
       ${s?.integrations.demo ? '<span class="tag">demo</span>' : ''}
       <i class="dot" style="background:${dot}" title="${store.connected ? 'relay connected' : 'relay offline'}"></i>

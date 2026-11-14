@@ -72,7 +72,6 @@ export type ApprovalPreset = 'careful' | 'balanced' | 'trusting' | 'everything';
 
 export interface Settings {
   approvals: ApprovalPreset;
-  animation: 'wave' | 'rain' | 'life' | 'off';
   background: 'gray' | 'black';
   dictationCleanup: boolean;
   /** After the glasses finish a turn on a laptop session, reopen it there so it shows everything. */
@@ -85,6 +84,8 @@ export interface Integrations {
   groq: boolean;
   /** 2FA codes set up (TOTP_PASSPHRASE + TOTP_UNLOCK + an imported vault). */
   totp: boolean;
+  /** The whole app is behind a pattern/password (APP_PATTERN / APP_PASSWORD). */
+  appLock: boolean;
   demo: boolean;
 }
 
@@ -152,6 +153,8 @@ export type ClientMsg =
   | { t: 'settings.set'; patch: Partial<Settings> }
   | { t: 'rules.clear' }
   /** 2FA: unlock with the swipe pattern; codes go only to this connection. */
+  /** App lock: unlock with the swipe pattern or the password. */
+  | { t: 'app.unlock'; pattern?: string[]; password?: string }
   | { t: 'totp.unlock'; seq: string[] }
   | { t: 'totp.list' }
   | { t: 'totp.lock' }
@@ -161,6 +164,10 @@ export type ClientMsg =
 export type ServerMsg =
   | { t: 'state'; state: ShellState }
   | { t: 'status.report'; report: StatusReport }
+  /** App lock: nothing else is sent until you unlock. */
+  | { t: 'app.locked'; method: 'pattern' | 'password'; reason?: string; triesLeft?: number }
+  /** Unlocked: keep `pass` and connect with it (?s=) until `until`. */
+  | { t: 'app.unlocked'; pass: string; until: number }
   | { t: 'totp.codes'; codes: TotpCode[]; unlockedUntil: number }
   | { t: 'totp.locked'; reason?: string; triesLeft?: number }
   | { t: 'dictation.cleaned'; reqId: string; text: string }

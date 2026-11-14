@@ -36,6 +36,10 @@ export const config = {
   chatsDir: expand(env('CHATS_DIR', '~/.claude-shell/chats')),
 
   groqKey: env('GROQ_API_KEY'),
+  // App lock (see src/lock.ts): a swipe pattern and/or a password for the whole app.
+  appPattern: env('APP_PATTERN').toLowerCase().split(/[\s,]+/).filter(Boolean),
+  appPassword: env('APP_PASSWORD'),
+  appLockHours: Number(env('APP_LOCK_HOURS', '12')) || 12,
   totpPassphrase: env('TOTP_PASSPHRASE'),
   totpUnlock: env('TOTP_UNLOCK').toLowerCase().split(/[\s,]+/).filter(Boolean),
   groqModel: env('GROQ_MODEL', 'openai/gpt-oss-20b'),

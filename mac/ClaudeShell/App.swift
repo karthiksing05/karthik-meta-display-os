@@ -13,6 +13,38 @@ extension Color {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var relay: Relay?
+
+    /// `ClaudeShell --render-panel <file.png>`: draws the menu bar panel offscreen (sample data) for the README.
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--render-panel"), i + 1 < args.count else { return }
+        MainActor.assumeIsolated {
+            let host = NSHostingView(rootView: Panel().environmentObject(Relay()).background(Color(nsColor: .windowBackgroundColor)))
+            host.appearance = NSAppearance(named: .darkAqua)
+            host.safeAreaRegions = []
+            let size = host.fittingSize
+            // A key window, so buttons and switches draw in their active colours.
+            final class KeyWindow: NSWindow { override var canBecomeKey: Bool { true } }
+            let window = KeyWindow(contentRect: NSRect(x: -20000, y: -20000, width: size.width, height: size.height),
+                                   styleMask: [.borderless], backing: .buffered, defer: false)
+            window.appearance = NSAppearance(named: .darkAqua)
+            window.contentView = host
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            host.layoutSubtreeIfNeeded()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                let scale: CGFloat = 2
+                let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale), pixelsHigh: Int(size.height * scale),
+                                           bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                           colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+                rep.size = size
+                host.cacheDisplay(in: host.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+                exit(0)
+            }
+        }
+    }
     func applicationWillTerminate(_ notification: Notification) {
         MainActor.assumeIsolated { relay?.shutdown() }
     }
@@ -190,9 +222,9 @@ struct Panel: View {
 
     private var settings: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Toggle("Start the relay when the app opens", isOn: $relay.autoStart)
-            Toggle("Open ClaudeProd at login", isOn: Binding(get: { relay.launchAtLogin }, set: { relay.setLaunchAtLogin($0) }))
-            Toggle("Demo data (no real sessions)", isOn: $relay.demo)
+            row("Start the relay when the app opens", $relay.autoStart)
+            row("Open ClaudeProd at login", Binding(get: { relay.launchAtLogin }, set: { relay.setLaunchAtLogin($0) }))
+            row("Demo data (no real sessions)", $relay.demo)
             HStack {
                 Text("Tunnel")
                 Picker("", selection: $relay.tunnel) {
@@ -207,6 +239,15 @@ struct Panel: View {
             }
         }
         .toggleStyle(.switch).controlSize(.small).font(.callout)
+    }
+
+    /// Label on the left, switch on the right edge.
+    private func row(_ label: String, _ isOn: Binding<Bool>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Toggle("", isOn: isOn).labelsHidden()
+        }
     }
 
     private var logView: some View {

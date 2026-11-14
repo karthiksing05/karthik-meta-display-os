@@ -1,6 +1,6 @@
 import { register, go } from '../nav.ts';
 import { store } from '../store.ts';
-import { C, esc, footer, header, icon } from '../ui.ts';
+import { BRAND, C, esc, footer, header, icon } from '../ui.ts';
 import { attachPixels } from '../pixels.ts';
 import { onEach } from './util.ts';
 
@@ -17,7 +17,7 @@ register('home', {
         <span class="s">${sub}</span>
       </button>`;
 
-    return `${header('claudeprod', C.pink)}
+    return `${header(BRAND)}
     <main>
       <canvas class="pixels" id="pixels"></canvas>
       <div class="tiles">
@@ -41,7 +41,7 @@ register('home', {
     ${footer('swipe to move · pinch to open')}`;
   },
   mount(root) {
-    attachPixels(root.querySelector('#pixels') as HTMLCanvasElement, store.state?.settings.animation ?? 'wave');
+    attachPixels(root.querySelector('#pixels') as HTMLCanvasElement);
     onEach(root, 'tile:', (k) => go(k));
   },
 });

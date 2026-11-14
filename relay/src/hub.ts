@@ -5,10 +5,10 @@ import type { Phrase, ServerMsg, ShellState, Settings } from '../../shared/proto
 import { load, save } from './store.ts';
 import { config } from './config.ts';
 import { readHost } from './host.ts';
+import { lockEnabled } from './lock.ts';
 
 const defaultSettings: Settings = {
   approvals: 'balanced',
-  animation: 'wave',
   background: 'gray',
   dictationCleanup: true,
   syncToLaptop: true,
@@ -46,6 +46,7 @@ export const state: ShellState = {
     claude: config.claudeAvailable,
     groq: Boolean(config.groqKey),
     totp: false,
+    appLock: lockEnabled(),
     demo: config.demo,
   },
   serverTime: Date.now(),

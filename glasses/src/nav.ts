@@ -25,6 +25,9 @@ let current: Entry = { name: 'home', params: {} };
 let rerender: () => void = () => {};
 
 export const register = (name: string, s: Screen) => screens.set(name, s);
+/** A screen shown over everything (the app lock). Keys go to it; back does nothing. */
+let override: string | null = null;
+export const setOverride = (name: string | null) => (override = name);
 export const currentScreen = () => current;
 export const screenFor = (name: string) => screens.get(name);
 export const onNavigate = (fn: () => void) => (rerender = fn);
@@ -136,8 +139,12 @@ export function initKeys(onAnyKey: () => void) {
     const active = document.activeElement as HTMLElement | null;
     const typing = active?.tagName === 'TEXTAREA' || active?.tagName === 'INPUT';
 
-    const screen = screens.get(current.name);
-    if (!typing && screen?.key?.(e, current.params)) {
+    const screen = screens.get(override ?? current.name);
+    if (!typing && screen?.key?.(e, override ? {} : current.params)) {
+      e.preventDefault();
+      return;
+    }
+    if (override && !typing && (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'BrowserBack')) {
       e.preventDefault();
       return;
     }

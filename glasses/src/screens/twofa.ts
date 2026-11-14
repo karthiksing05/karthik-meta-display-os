@@ -1,7 +1,6 @@
 import { register } from '../nav.ts';
 import { store, send, onMessage } from '../store.ts';
-import { C, btn, esc, footer, header, icon } from '../ui.ts';
-import { on } from './util.ts';
+import { C, esc, footer, header, icon } from '../ui.ts';
 import type { TotpCode } from '../../../shared/protocol.ts';
 
 /**
@@ -62,17 +61,16 @@ register('twofa', {
     <main class="scroll">
       <div class="list">${s.codes
         .map(
-          (c) => `<div class="item"><span class="grow"><span class="y" style="display:block">${esc(c.issuer)}</span><span class="small muted">${esc(c.account)}</span></span>
+          // Each code is focusable (same key every second), so swiping scrolls and focus stays put.
+          (c, i) => `<div class="item" data-f="code:${esc(c.id)}" tabindex="-1" ${i === 0 ? 'data-default' : ''}><span class="grow"><span class="y" style="display:block">${esc(c.issuer)}</span><span class="small muted">${esc(c.account)}</span></span>
             <span class="code ${c.remaining <= 5 ? 'p' : 'g'}">${c.code.slice(0, c.code.length / 2)} ${c.code.slice(c.code.length / 2)}</span>
             <span class="small muted" style="width:28px;text-align:right">${c.remaining}s</span></div>`,
         )
         .join('')}</div>
-      ${btn('lock', 'lock now', { icon: 'x', def: true })}
     </main>
-    ${footer('locks automatically')}`;
+    ${footer('swipe to scroll · back locks')}`;
   },
   mount(root) {
-    on(root, 'lock', () => send({ t: 'totp.lock' }));
     startTicker();
   },
   key(e) {

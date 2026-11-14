@@ -49,6 +49,10 @@ final class Relay: ObservableObject {
     private var timer: Timer?
     private var logHandle: FileHandle?
 
+    /// `--render-panel`: sample data for the README picture; nothing is started or polled.
+    static let previewMode = CommandLine.arguments.contains("--render-panel")
+    private var previewOwns = false
+
     init() {
         let d = UserDefaults.standard
         d.register(defaults: ["autoStart": true, "demo": false, "tunnel": "auto"])
@@ -56,6 +60,16 @@ final class Relay: ObservableObject {
         demo = d.bool(forKey: "demo")
         tunnel = d.string(forKey: "tunnel") ?? "auto"
         repo = d.string(forKey: "repo") ?? (Bundle.main.object(forInfoDictionaryKey: "ClaudeShellRepo") as? String ?? "")
+        if Relay.previewMode {
+            status = RelayStatus(ok: true, demo: false, publicUrl: "https://your-mac.your-tailnet.ts.net", lens: 1, sessions: 6,
+                                 working: 2, needsYou: 1, approvals: "balanced", totp: false, groq: true)
+            phase = .running
+            previewOwns = true
+            autoStart = true
+            demo = false
+            tunnel = "auto"
+            return
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in Task { @MainActor in await self?.poll() } }
         Task {
             await poll()
@@ -202,7 +216,7 @@ final class Relay: ObservableObject {
         }
     }
 
-    var ownsRelay: Bool { proc != nil }
+    var ownsRelay: Bool { proc != nil || previewOwns }
 
     // MARK: install QR
 

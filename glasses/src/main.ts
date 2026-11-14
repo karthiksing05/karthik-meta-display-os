@@ -1,13 +1,14 @@
 import './styles.css';
 import { connect, onMessage, reloadApp, store, token } from './store.ts';
-import { currentScreen, initHistory, initKeys, onNavigate, restoreFocus, screenFor, go } from './nav.ts';
+import { currentScreen, initHistory, initKeys, onNavigate, restoreFocus, screenFor, go, setOverride } from './nav.ts';
 import { wake } from './pixels.ts';
-import { esc, header, footer, C } from './ui.ts';
+import { BRAND, esc, header, footer, C } from './ui.ts';
 import './screens/home.ts';
 import './screens/claude.ts';
 import './screens/compose.ts';
 import './screens/settings.ts';
 import './screens/twofa.ts';
+import './screens/lock.ts';
 
 const app = document.getElementById('app')!;
 const overlay = document.getElementById('overlay')!;
@@ -27,12 +28,22 @@ function render() {
     const { name, params } = currentScreen();
     const screen = screenFor(name) ?? screenFor('home')!;
     if (!token) {
-      app.innerHTML = `${header('claudeprod', C.pink)}<main class="center"><div>
+      app.innerHTML = `${header(BRAND)}<main class="center"><div>
         <div class="y">No relay token.</div>
         <div class="small muted">Install the app from your relay's /install page<br>(or open this URL with ?k=YOUR_TOKEN once).</div>
       </div></main>${footer('see docs/PUSH_TO_GLASSES.md')}`;
       return;
     }
+    // App lock: the lock screen covers everything until the relay accepts the pattern/password.
+    if (store.locked) {
+      setOverride('lock');
+      const lock = screenFor('lock')!;
+      app.innerHTML = lock.render({});
+      lock.mount?.(app, {});
+      restoreFocus(app);
+      return;
+    }
+    setOverride(null);
     app.innerHTML = screen.render(params);
     screen.mount?.(app, params);
     restoreFocus(app);

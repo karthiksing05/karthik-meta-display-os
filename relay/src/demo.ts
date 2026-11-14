@@ -43,7 +43,21 @@ export function startDemo() {
     diffStat: { files: 7, added: 212, removed: 88 },
     transcript: [
       { at: now() - 30 * min, role: 'you', text: 'Refactor auth into middleware and add refresh tokens.' },
-      { at: now() - 12 * min, role: 'claude', text: 'Moved session checks into authMiddleware.ts. Tests pass (48/48).' },
+      {
+        at: now() - 12 * min,
+        role: 'claude',
+        text: [
+          '## Auth is now middleware',
+          '',
+          'Moved the session checks into **authMiddleware.ts**. Tests pass (48/48).',
+          '',
+          '- `requireUser()` guards every `/api` route',
+          '- refresh tokens rotate on each use, 30-day expiry',
+          '- old `checkSession()` calls removed (12 files)',
+          '',
+          'Next: run the migration that adds the `refresh_tokens` table. It needs your OK.',
+        ].join('\n'),
+      },
       { at: now() - 3 * min, role: 'tool', text: 'run npm run migrate' },
     ],
   });
@@ -74,7 +88,7 @@ export function startDemo() {
   });
   const plan = session({
     name: 'status widget',
-    repo: 'claude-shell',
+    repo: 'claudeprod',
     status: 'waiting',
     activity: 'asks: where should the progress ring go?',
     progress: 0.2,
@@ -109,7 +123,7 @@ export function startDemo() {
       at: now() - 5 * min,
     },
   ];
-  Object.assign(state.integrations, { claude: true, groq: true, totp: true, demo: true });
+  Object.assign(state.integrations, { claude: true, groq: true, totp: true, appLock: false, demo: true });
   hub.changed();
 
   // Make the running session tick so the lens has something alive to show.

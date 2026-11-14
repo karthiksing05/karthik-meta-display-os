@@ -1,5 +1,5 @@
 import { register } from '../nav.ts';
-import { store, send, device } from '../store.ts';
+import { store, send, lockNow } from '../store.ts';
 import { C, btn, esc, footer, header, icon } from '../ui.ts';
 import { on } from './util.ts';
 import type { Settings } from '../../../shared/protocol.ts';
@@ -27,11 +27,11 @@ register('settings', {
     <main class="scroll">
       <div class="tiles">
         ${tile('approvals', 'check', 'approvals', st.approvals, `learns from ↓ · ${st.learnedRules.length} learned`)}
-        ${tile('animation', 'bolt', 'home animation', st.animation)}
         ${tile('background', 'glasses', 'background', st.background, st.background === 'black' ? 'see-through, saves battery' : 'monokai gray')}
         ${tile('cleanup', 'mic', 'dictation cleanup', st.dictationCleanup ? 'on' : 'off', i.groq ? 'groq' : 'local (no groq key)')}
-        ${tile('battery', 'laptop', 'mac', `${s.host.battery ?? '—'}%${s.host.charging ? ' ⚡' : ''}`, `wi-fi ${s.host.wifi === 'connected' ? (s.host.ssid ?? 'on') : s.host.wifi ?? '—'} · glasses ${device.battery ?? '—'}%`)}
-        ${tile('sync', 'laptop', 'laptop sync', st.syncToLaptop ? 'on' : 'off', st.syncToLaptop ? 'reopens sessions after glasses replies' : 'use "open on laptop"')}
+        ${tile('battery', 'laptop', 'mac', `${s.host.battery ?? '—'}%${s.host.charging ? ' ⚡' : ''}`, `wi-fi ${s.host.wifi === 'connected' ? (s.host.ssid ?? 'on') : s.host.wifi ?? '—'}`)}
+        ${tile('sync', 'laptop', 'laptop sync', st.syncToLaptop ? 'on' : 'off', st.syncToLaptop ? 'reopens on your Mac' : 'manual only')}
+        ${i.appLock ? tile('locknow', 'key', 'app lock', 'on', 'pinch to lock now') : ''}
         ${tile('refresh', 'pulse', 'refresh', store.connected ? 'relay ok' : 'offline', 'pinch to re-sync')}
       </div>
       <div class="small muted">${esc(PRESET_NOTE[st.approvals])}${st.approvals === 'everything' ? '' : '. Dangerous commands always ask.'}</div>
@@ -47,11 +47,11 @@ register('settings', {
     if (!st) return;
     const set = (patch: Partial<Settings>) => send({ t: 'settings.set', patch });
     on(root, 'approvals', () => set({ approvals: cycle(['careful', 'balanced', 'trusting', 'everything'] as const, st.approvals) }));
-    on(root, 'animation', () => set({ animation: cycle(['wave', 'rain', 'life', 'off'] as const, st.animation) }));
     on(root, 'background', () => set({ background: st.background === 'gray' ? 'black' : 'gray' }));
     on(root, 'cleanup', () => set({ dictationCleanup: !st.dictationCleanup }));
     on(root, 'sync', () => set({ syncToLaptop: !st.syncToLaptop }));
     on(root, 'refresh', () => send({ t: 'refresh' }));
+    on(root, 'locknow', () => lockNow());
     on(root, 'clear', () => send({ t: 'rules.clear' }));
   },
 });

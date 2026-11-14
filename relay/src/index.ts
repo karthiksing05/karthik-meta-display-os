@@ -17,6 +17,7 @@ import { demoHandle, startDemo } from './demo.ts';
 import { installLink } from '../scripts/links.ts';
 import { handleHook, seedExternal } from './external.ts';
 import { notePid, startDeskWatch } from './desk.ts';
+import { issuePass, lockMethod, passOk, tryAppUnlock } from './lock.ts';
 import { codes, totpEnabled, tryUnlock, vaultNow, type TotpAccount } from './totp.ts';
 
 // ---------- auth ----------
@@ -129,7 +130,8 @@ server.on('upgrade', (req, socket, head) => {
     socket.destroy();
     return;
   }
-  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
+  const unlocked = passOk(url.searchParams.get('s'));
+  wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, unlocked));
 });
 
 // 2FA unlock is per connection, never shared state.
@@ -140,8 +142,11 @@ const demoVault: TotpAccount[] = [
   { id: 'd3', issuer: 'AWS', account: 'root', secret: 'GEZDGNBVGY3TQOJQ', algorithm: 'SHA1', digits: 6, period: 30 },
 ];
 
-wss.on('connection', (ws: WebSocket) => {
-  hub.add(ws);
+wss.on('connection', (ws: WebSocket, unlockedAtStart: boolean) => {
+  // App lock: a locked connection gets no state and can only try to unlock.
+  let unlocked = unlockedAtStart;
+  if (unlocked) hub.add(ws);
+  else reply(ws, { t: 'app.locked', method: lockMethod() });
   const alive = { ok: true };
   ws.on('pong', () => (alive.ok = true));
   const ping = setInterval(() => {
@@ -158,6 +163,16 @@ wss.on('connection', (ws: WebSocket) => {
     try {
       msg = JSON.parse(String(raw));
     } catch {
+      return;
+    }
+    if (!unlocked) {
+      if (msg.t !== 'app.unlock') return reply(ws, { t: 'app.locked', method: lockMethod() });
+      const r = tryAppUnlock(msg);
+      if (!r.ok) return reply(ws, { t: 'app.locked', method: lockMethod(), reason: r.reason, triesLeft: 'triesLeft' in r ? r.triesLeft : undefined });
+      unlocked = true;
+      console.log('[lock] unlocked');
+      reply(ws, { t: 'app.unlocked', ...issuePass() });
+      hub.add(ws);
       return;
     }
     try {
@@ -266,6 +281,22 @@ server.listen(config.port, () => {
   console.log(`[relay] glasses app: ${config.glassesDist}`);
   console.log(`[relay] install page: ${config.publicUrl || 'http://localhost:' + config.port}/install?k=<SHELL_TOKEN>\n`);
 });
+
+// Edits to relay/.env: tsx watch doesn't notice dotfiles, so nudge it by touching a source file
+// (it then restarts the relay with the new settings).
+{
+  const envFile = path.resolve('.env');
+  let last = fs.existsSync(envFile) ? fs.statSync(envFile).mtimeMs : 0;
+  setInterval(() => {
+    const m = fs.existsSync(envFile) ? fs.statSync(envFile).mtimeMs : 0;
+    if (m !== last) {
+      last = m;
+      console.log('[relay] relay/.env changed: restarting');
+      const self = new URL(import.meta.url).pathname;
+      fs.utimesSync(self, new Date(), new Date());
+    }
+  }, 2000).unref();
+}
 
 if (config.demo) {
   startDemo();

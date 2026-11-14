@@ -7,6 +7,16 @@ import type { ClientMsg, ServerMsg, ShellState, StatusReport } from '../../share
  */
 
 const TOKEN_KEY = 'shell.k';
+/** App lock: the signed pass the relay gave this device when you unlocked. */
+const PASS_KEY = 'shell.pass';
+const getPass = () => {
+  try {
+    return localStorage.getItem(PASS_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+let memPass = '';
 
 function readToken(): string | null {
   const url = new URL(location.href);
@@ -42,6 +52,8 @@ export const store = {
   skew: 0,
   /** A newer build of this app is on the relay; main.ts reloads when it's safe. */
   stale: false,
+  /** App lock: set while the relay wants the pattern/password. */
+  locked: null as null | { method: 'pattern' | 'password'; reason?: string; triesLeft?: number },
   on(fn: Listener) {
     listeners.add(fn);
     return () => listeners.delete(fn);
@@ -75,7 +87,8 @@ const queue: string[] = [];
 export function connect() {
   if (!token) return;
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws?k=${encodeURIComponent(token)}`);
+  const pass = memPass || getPass();
+  ws = new WebSocket(`${proto}://${location.host}/ws?k=${encodeURIComponent(token)}${pass ? `&s=${encodeURIComponent(pass)}` : ''}`);
   ws.onopen = () => {
     retry = 0;
     store.connected = true;
@@ -91,7 +104,18 @@ export function connect() {
   ws.onerror = () => ws?.close();
   ws.onmessage = (ev) => {
     const msg = JSON.parse(String(ev.data)) as ServerMsg;
-    if (msg.t === 'state') {
+    if (msg.t === 'app.locked') {
+      store.locked = { method: msg.method, reason: msg.reason, triesLeft: msg.triesLeft };
+    } else if (msg.t === 'app.unlocked') {
+      store.locked = null;
+      memPass = msg.pass;
+      try {
+        localStorage.setItem(PASS_KEY, msg.pass);
+      } catch {
+        /* kept in memory for this run */
+      }
+    } else if (msg.t === 'state') {
+      store.locked = null;
       store.state = msg.state;
       store.skew = msg.state.serverTime - Date.now();
       // First build we see is the one we're running; a different one means the app was rebuilt.
@@ -154,6 +178,16 @@ export const device = { battery: null as number | null, charging: false };
     /* not available */
   }
 })();
+
+/** Lock this device now: forget its pass and reconnect (the relay asks for the pattern again). */
+export function lockNow() {
+  memPass = '';
+  try {
+    localStorage.removeItem(PASS_KEY);
+  } catch {}
+  store.state = null;
+  ws?.close();
+}
 
 /** Load the new build. Carries the token in the URL in case localStorage didn't keep it. */
 export function reloadApp() {

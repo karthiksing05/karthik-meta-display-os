@@ -9,9 +9,23 @@ Meta-Display-Customs/
 ├── glasses/        the 600×600 web app that runs on the glasses (TypeScript + Vite, no framework)
 ├── relay/          the server: Claude Agent SDK sessions, approvals, integrations (Node + TypeScript)
 ├── shared/         protocol.ts, the message types both sides use
-├── deploy/         Oracle VM setup, systemd, Cloudflare tunnel, macOS launch agent
+├── deploy/         up.sh (one-command setup), Oracle VM setup, systemd, tunnels
+├── mac/            the Claude Shell menu bar app (Swift, no Xcode needed)
 └── docs/           how-tos (start with PUSH_TO_GLASSES.md)
 ```
+
+## The Mac app (easiest)
+
+```bash
+npm run app        # builds "Claude Shell.app" into ~/Applications and opens it
+```
+
+The logo appears in your menu bar (coloured while the relay runs, grey when stopped). It runs
+everything `npm run up` does (dependencies, `relay/.env`, Claude Code hooks, the glasses build,
+a Tailscale/Cloudflare tunnel, the relay and the install QR) and stops it all when you quit. From
+the menu: start/stop/restart, **Install QR**, a lens **Preview** in your browser, a **Checkup**
+(`npm run doctor`), logs, demo mode, tunnel choice and "open at login". It needs only the Xcode
+Command Line Tools (`xcode-select --install`). Rebuild with `npm run app` after moving the repo.
 
 ## Try it in 2 minutes (demo data, no keys)
 
@@ -42,6 +56,7 @@ approval card (→ approve, ← deny, ↓ always) · composer (dictation + optio
 ## Commands
 | Command | Does |
 |---|---|
+| `npm run app` | build + install the menu bar app (does everything below for you) |
 | `npm run up` | **everything in one go**: build, tunnel, relay, install QR. Leave it running: edits go live (`-- --demo` for fake data) |
 | `npm run doctor` | checks relay, URL, Claude login, repos and hooks; says what to fix |
 | `npm run 2fa` | import 2FA accounts for the lens (opt-in, read [docs/TWO_FACTOR.md](docs/TWO_FACTOR.md) first) |

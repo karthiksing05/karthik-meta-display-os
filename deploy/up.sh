@@ -104,7 +104,7 @@ if [ "$DEMO" = 0 ]; then
     fi
   fi
   if [ -d "$REPOS_ABS" ]; then
-    n=$(find "$REPOS_ABS" -mindepth 2 -maxdepth 2 -name .git 2>/dev/null | wc -l | tr -d ' ')
+    n=$(find "$REPOS_ABS" -mindepth 2 -maxdepth 4 -name .git -not -path "*/node_modules/*" 2>/dev/null | wc -l | tr -d ' ')
     say "Repos folder: $REPOS_ABS ($n git repo(s))"
   fi
 fi

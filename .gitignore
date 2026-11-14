@@ -5,3 +5,4 @@ dist/
 install-qr.png
 .DS_Store
 relay/.logs/
+mac/build/

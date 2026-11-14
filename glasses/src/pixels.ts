@@ -92,15 +92,17 @@ function water(x: number, y: number): [string, number] | null {
   if (row > surface) return null;
   const depth = surface - row; // 0 at the surface
   const steep = Math.abs(h[Math.min(COLS - 1, x + 1)] - h[Math.max(0, x - 1)]);
+  // Rainbow water: each column takes its colour from the Monokai rainbow (pink → purple across the band).
+  const hue = palette[Math.min(palette.length - 1, Math.floor((x / COLS) * palette.length))];
   if (depth < 1) {
-    // The top cell: white foam where the wave is steep or high, bright cyan otherwise.
+    // The top cell: white foam where the wave is steep or high, full colour otherwise.
     if (steep > 1.1 || h[x] > 2.3) return [C.fg, 0.95];
-    return [C.cyan, 0.95];
+    return [hue, 0.95];
   }
-  if (depth < 2.2) return [C.cyan, 0.55];
-  // Deeper water: purple, a slow shimmer so it doesn't look flat.
+  if (depth < 2.2) return [hue, 0.6];
+  // Deeper water: the same colour, darker, with a slow shimmer so it doesn't look flat.
   const shimmer = 0.08 * Math.sin(x * 0.7 + row * 1.3 + t * 0.15);
-  return [C.purple, Math.max(0.18, 0.42 - depth * 0.04 + shimmer)];
+  return [hue, Math.max(0.15, 0.36 - depth * 0.04 + shimmer)];
 }
 
 export function attachPixels(el: HTMLCanvasElement, m: typeof mode) {

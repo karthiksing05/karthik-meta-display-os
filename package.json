@@ -19,6 +19,7 @@
     "deploy": "bash deploy/update.sh",
     "up": "bash deploy/up.sh",
     "hooks": "npm run hooks -w relay --",
+    "app": "bash mac/build.sh",
     "2fa": "npm run 2fa:import -w relay --",
     "doctor": "npm run doctor -w relay --"
   },

@@ -150,14 +150,18 @@ register('report', {
           <i class="status" style="background:${statusColor(status)};margin-top:6px"></i>
           <span class="grow">
             <span class="row"><span class="y ellipsis grow">${esc(l.session)}</span>${now ? `<span class="small muted">${ago(now.lastActivity)}</span>` : ''}</span>
-            <span class="small clamp2" style="display:block;color:${l.needsYou ? C.orange : C.cm}">${esc(l.text)}</span>
+            <span class="small" style="display:block;color:${l.needsYou ? C.orange : C.fg}">${esc(l.text)}</span>
+            ${l.change ? `<span class="small" style="display:block;color:${/^no change/i.test(l.change) ? C.cm : C.cyan}">since last · ${esc(l.change)}</span>` : ''}
           </span>
         </button>`;
       })
       .join('');
     return `${header('status', C.pink)}
     <main class="scroll">
-      <div class="card"><div class="label">claude · ${agoText(r.at)}</div><div>${esc(r.headline)}</div></div>
+      <button class="item msg" data-f="overview" data-default>
+        <span class="grow"><span class="label" style="display:block">claude · ${agoText(r.at)}${r.previousAt ? ` · vs check ${agoText(r.previousAt)}` : ''}</span>
+        <span style="display:block">${esc(r.headline)}</span></span>
+      </button>
       ${btn('recheck', checking ? 'checking…' : 'check again', { icon: 'pulse', cls: 'chip' })}
       <div class="list">${rows || '<div class="muted center">No sessions.</div>'}</div>
     </main>
@@ -165,6 +169,10 @@ register('report', {
   },
   mount(root) {
     onEach(root, 'rl:', (id) => (store.state?.sessions.some((x) => x.id === id) ? go('session', { id }) : localNotify('that session is gone')));
+    on(root, 'overview', () => {
+      const r = store.report;
+      if (r) go('message', { title: 'how it\'s going', role: 'claude', at: r.at, text: r.headline });
+    });
     on(root, 'recheck', () => {
       checking = true;
       send({ t: 'status.check' });

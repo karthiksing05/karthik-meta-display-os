@@ -131,9 +131,12 @@ export interface HostInfo {
 
 export interface StatusReport {
   at: number;
+  /** 2-3 sentence overview, benchmarked against the previous check when there is one. */
   headline: string;
-  /** Every session, ones waiting on you first. `text` = a one-line summary of where it stands. */
-  lines: { id: string; session: string; status: SessionStatus; needsYou: boolean; text: string }[];
+  /** When the previous check ran (what "since last" compares with). */
+  previousAt?: number;
+  /** Every session, ones waiting on you first. `text` = where it stands; `change` = what moved since the last check. */
+  lines: { id: string; session: string; status: SessionStatus; needsYou: boolean; text: string; change?: string }[];
 }
 
 // ---------- client → relay ----------

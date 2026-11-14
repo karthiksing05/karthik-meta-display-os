@@ -2,16 +2,24 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionInfo, StatusReport } from '../../shared/protocol.ts';
 import { claudeEnv, config } from './config.ts';
 import { state } from './hub.ts';
+import { load, save } from './store.ts';
 
 /**
- * "How's everything going?" — a headline plus a one-line summary of EVERY session, ordered:
- * needs you → working → your turn → earlier (newest first within each group).
- * A small model writes the headline and the per-session lines in one call; without it (offline,
- * demo, error) each line falls back to the session's own activity, so the report always works.
+ * "How's everything going?": a short overview plus a summary of EVERY session, ordered
+ * needs you → working → your turn → earlier (newest first within each group), and benchmarked
+ * against the previous check: what moved, finished, started or got stuck since then.
+ *
+ * A small model writes it in one call. Without it (offline, demo, error) each line falls back to the
+ * session's own activity, and "since last" to plain status changes, so the report always works.
+ * The previous report is kept in DATA_DIR/last-status.json (never in ~/.claude/projects).
  */
 const RANK: Record<string, number> = { waiting: 1, running: 1, starting: 1, idle: 2, done: 2, error: 2, stopped: 3 };
+type Line = StatusReport['lines'][number];
 
 export async function statusReport(sessions: SessionInfo[]): Promise<StatusReport> {
+  const prev = load<StatusReport | null>('last-status', null);
+  const prevById = new Map((prev?.lines ?? []).map((l) => [l.id, l]));
+
   const pending = new Map<string, string>();
   for (const a of state.approvals) if (!pending.has(a.sessionId)) pending.set(a.sessionId, `approve: ${a.title}`);
   for (const q of state.questions) if (!pending.has(q.sessionId)) pending.set(q.sessionId, `asks: ${q.question}`);
@@ -19,12 +27,13 @@ export async function statusReport(sessions: SessionInfo[]): Promise<StatusRepor
   const rank = (s: SessionInfo) => (needs(s) ? 0 : RANK[s.status] ?? 3);
   const ordered = [...sessions].sort((a, b) => rank(a) - rank(b) || b.lastActivity - a.lastActivity);
 
-  const lines = ordered.map((s) => ({
+  const lines: Line[] = ordered.map((s) => ({
     id: s.id,
     session: s.name,
     status: s.status,
     needsYou: needs(s),
-    text: (pending.get(s.id) ?? lineFor(s)).slice(0, 160),
+    text: (pending.get(s.id) ?? lineFor(s)).slice(0, 320),
+    change: plainChange(s, prevById.get(s.id), prev),
   }));
 
   const waiting = lines.filter((l) => l.needsYou).length;
@@ -33,17 +42,20 @@ export async function statusReport(sessions: SessionInfo[]): Promise<StatusRepor
 
   if (config.claudeAvailable && !config.demo && ordered.length) {
     try {
-      const out = await summarize(ordered, pending);
+      const out = await summarize(ordered, pending, prev, prevById);
       if (out.headline) headline = out.headline;
       lines.forEach((l, i) => {
         const t = out.lines.get(i + 1);
-        if (t) l.text = t.slice(0, 160);
+        if (t?.now) l.text = t.now.slice(0, 320);
+        if (t?.since) l.change = t.since.slice(0, 200);
       });
     } catch {
       /* keep the plain lines */
     }
   }
-  return { at: Date.now(), headline, lines };
+  const report: StatusReport = { at: Date.now(), headline, lines, previousAt: prev?.at };
+  save('last-status', report);
+  return report;
 }
 
 function lineFor(s: SessionInfo): string {
@@ -52,23 +64,48 @@ function lineFor(s: SessionInfo): string {
   return `${s.activity || s.repo}${todo}${diff}`;
 }
 
-async function summarize(sessions: SessionInfo[], pending: Map<string, string>) {
+/** Without the model: just the status change since the last check, if any. */
+function plainChange(s: SessionInfo, before: Line | undefined, prev: StatusReport | null): string | undefined {
+  if (!prev) return undefined;
+  if (!before) return s.startedAt > prev.at ? 'new since last check' : 'not in the last check';
+  if (before.status !== s.status) return `was ${before.status}, now ${s.status}`;
+  if (s.lastActivity <= prev.at) return 'no change';
+  return undefined;
+}
+
+const agoWords = (ms: number) => {
+  const m = Math.round(ms / 60_000);
+  return m < 60 ? `${m} min` : m < 48 * 60 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} days`;
+};
+
+async function summarize(sessions: SessionInfo[], pending: Map<string, string>, prev: StatusReport | null, prevById: Map<string, Line>) {
   const digest = sessions
     .map((s, i) => {
-      const recent = s.transcript.slice(-4).map((t) => `  ${t.role}: ${t.text.replace(/\s+/g, ' ').slice(0, 220)}`).join('\n');
+      const recent = s.transcript.slice(-6).map((t) => `  ${t.role}: ${t.text.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n');
       const wait = pending.get(s.id) ? `\n  WAITING ON USER: ${pending.get(s.id)}` : '';
-      return `${i + 1}. ${s.name} (${s.repo}) [${s.status}] ${lineFor(s)}${wait}\n${recent}`;
+      const before = prevById.get(s.id);
+      const last = !prev ? '' : before ? `\n  LAST CHECK: [${before.status}] ${before.text}` : '\n  LAST CHECK: (not listed then)';
+      return `${i + 1}. ${s.name} (${s.repo}) [${s.status}] ${lineFor(s)}${wait}${last}\n${recent}`;
     })
     .join('\n\n');
 
+  const since = prev
+    ? `The previous check was ${agoWords(Date.now() - prev.at)} ago. Its overview said: "${prev.headline}". ` +
+      `Benchmark against it: say what moved forward, finished, started, stalled or newly needs the user since then. ` +
+      `Only claim a change when a session's LAST CHECK line differs from what it shows now; if little time passed or ` +
+      `nothing differs, say plainly that nothing has changed since the last check.\n`
+    : 'There is no previous check to compare with.\n';
+
   const q = query({
     prompt:
-      `Summarize these Claude sessions for someone glancing at smart glasses. No markdown.\n` +
-      `Line 1: "0: " + a headline, at most 120 characters. Only sessions marked WAITING ON USER are waiting on ` +
-      `the user; lead with those if any, otherwise say what's running and what finished.\n` +
-      `Then one line per session, same numbers: "N: " + where it stands, under 100 characters: the outcome ` +
-      `or current step, and for WAITING ON USER exactly what is needed. Don't restate the status word ` +
-      `(running/stopped) — it's shown separately.\n\n${digest}`,
+      `You are summarizing Claude Code sessions for someone reading on smart glasses (they can scroll). No markdown.\n` +
+      since +
+      `Line 1: "0: " + an overview in 2-3 short sentences (under 300 characters): first anything waiting on the user ` +
+      `(only sessions marked WAITING ON USER count), then overall progress${prev ? ' since the last check' : ''}, then what's next.\n` +
+      `Then one line per session, same numbers, in the form "N: <now> | <since>":\n` +
+      `  <now> = 1-2 sentences (under 220 characters): what it did or is doing, the outcome so far, and for WAITING ON USER exactly what is needed.\n` +
+      `  <since> = ${prev ? 'what changed since the last check, in under 90 characters ("no change" if nothing did; "new" if it wasn\'t listed)' : '"-"'}.\n` +
+      `Refer to sessions by name, never by number. Don't restate the status word (running/stopped); it's shown separately.\n\n${digest}`,
     // persistSession: false = nothing is saved to ~/.claude/projects, so these never pile up in your
     // session lists (or on the lens). Older saved ones are deleted by external.ts.
     options: { model: config.statusModel, maxTurns: 1, allowedTools: [], tools: [], settingSources: [], persistSession: false, env: claudeEnv() },
@@ -76,10 +113,20 @@ async function summarize(sessions: SessionInfo[], pending: Map<string, string>) 
   let raw = '';
   for await (const m of q) if (m.type === 'result' && m.subtype === 'success') raw = m.result;
 
-  const lines = new Map<number, string>();
+  const lines = new Map<number, { now: string; since?: string }>();
+  let headline = '';
   for (const l of raw.split('\n')) {
     const m = l.match(/^\s*(\d+)\s*[:.)\-]\s*(.+)$/);
-    if (m) lines.set(Number(m[1]), m[2].trim());
+    if (!m) continue;
+    const n = Number(m[1]);
+    if (n === 0) {
+      headline = m[2].trim();
+      continue;
+    }
+    const cut = m[2].lastIndexOf(' | ');
+    const now = (cut > 0 ? m[2].slice(0, cut) : m[2]).trim();
+    const sinceText = cut > 0 ? m[2].slice(cut + 3).trim() : '';
+    lines.set(n, { now, since: sinceText && sinceText !== '-' ? sinceText : undefined });
   }
-  return { headline: (lines.get(0) ?? '').slice(0, 200), lines };
+  return { headline: headline.slice(0, 400), lines };
 }

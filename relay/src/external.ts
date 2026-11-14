@@ -54,7 +54,7 @@ function isOwn(sdkId: string, cwd: string | undefined) {
 }
 
 /** The "how's everything going?" summaries from older versions were saved as sessions: clear them out. */
-const STATUS_PROMPT_PREFIXES = ['Summarize these coding sessions for someone glancing', 'Summarize these Claude sessions for someone glancing'];
+const STATUS_PROMPT_PREFIXES = ['Summarize these coding sessions for someone glancing', 'Summarize these Claude sessions for someone glancing', 'You are summarizing Claude Code sessions for someone reading'];
 const isStatusPrompt = (t: string) => STATUS_PROMPT_PREFIXES.some((p) => t.startsWith(p));
 
 function repoLabel(cwd: string) {

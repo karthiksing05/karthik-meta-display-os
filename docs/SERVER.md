@@ -92,8 +92,10 @@ Claude tab runs `claude --resume=<id>`; the hooks report the rest), and:
 - **Quick phrases** (continue, lgtm, elaborate, draft plan, summarize): one pinch sends them to a session, or from the hub
   to the session picked with ▾ ("active sessions" = working or open and waiting, never stopped ones).
   Edit `~/.claude-shell/data/phrases.json`; changes show within seconds.
-- **How's everything going?** runs a one-turn summary that is never saved, so it doesn't pile up in
-  your session lists. Old saved ones are deleted automatically.
+- **How's everything going?** runs a one-turn summary: a 2-3 sentence overview and a line or two per
+  session, each with **since last**, what changed since the previous check (kept in
+  `DATA_DIR/last-status.json`). Everything scrolls, and pinching the overview opens it in the reader.
+  The summary is never saved as a Claude session, so it doesn't pile up in your session lists.
 
 ## Approvals (no rules editor)
 

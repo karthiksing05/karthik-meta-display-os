@@ -30,19 +30,22 @@ your Mac over the VM for this.
    TOTP_PASSPHRASE=<long random passphrase, NOT your SHELL_TOKEN>
    TOTP_UNLOCK=up up left right down left
    ```
-2. Export from Google Authenticator: **⋮ → Transfer accounts → Export accounts**, then pick the accounts
-   (low-stakes ones only). It shows a QR code.
-3. Turn that QR into a link: scan it with another device's camera and copy the text. It starts
-   `otpauth-migration://offline?data=`. You can also paste single `otpauth://totp/...` links from a site's 2FA setup.
-4. On the relay machine:
+2. Export from Google Authenticator: **⋮ → Transfer accounts → Export accounts**, pick the accounts
+   (low-stakes ones only). It shows a QR code. Take a screenshot of it.
+3. Import from the screenshot:
    ```bash
-   cd relay && npm run 2fa:import
+   npm run 2fa -- --image ~/Downloads/<screenshot>.png     # PNG, JPEG or HEIC
    ```
-   Paste the link(s), then press Enter on an empty line. Check with `npm run 2fa:import -- --list`.
-5. No restart needed: the 2fa tile turns on within a minute. Then **delete every copy of the export QR and link** (screenshots, notes, clipboard history).
+   It decodes the QR on your Mac (with macOS's Vision framework for dense codes), never prints the
+   secrets, and saves the accounts encrypted. You can also paste `otpauth-migration://…` or
+   `otpauth://totp/…` links instead: `npm run 2fa` and paste them, Enter on an empty line to finish.
+   Check with `npm run 2fa -- --list`.
+4. No restart needed: the 2fa tile turns on within a minute. Then **delete the screenshot** (and empty
+   Recently Deleted), plus any other copy of the export QR or link.
 
-On the lens: **home → 2fa**, swipe your pattern, pinch. Codes show with a countdown.
+On the lens: **home → 2fa**, swipe your pattern, pinch. Codes show for 60 seconds with a countdown;
+swipe to scroll, and **back** locks them again.
 
-To remove accounts: `npm run 2fa:import -- --remove GitHub`. To remove everything, delete
+To remove accounts: `npm run 2fa -- --remove GitHub`. To remove everything, delete
 `~/.claude-shell/data/totp.enc`. Your accounts stay in Google Authenticator either way: exporting
 copies them, it doesn't move them.

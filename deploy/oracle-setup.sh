@@ -66,7 +66,7 @@ sudo systemctl enable --now claude-shell
 cat <<'NEXT'
 
 Done. Next steps:
-  1. Edit ~/claude-shell/relay/.env  (Claude token, optional Groq key)
+  1. Edit ~/claude-shell/relay/.env  (CLAUDE_AUTH=token + CLAUDE_CODE_OAUTH_TOKEN, APP_PATTERN, optional Groq key)
      then: sudo systemctl restart claude-shell
   2. Clone the repos you want Claude to work on into ~/code
   3. Public HTTPS address (free, stable):

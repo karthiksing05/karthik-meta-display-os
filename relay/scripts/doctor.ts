@@ -105,6 +105,16 @@ async function groq() {
   }
 }
 
+function lock() {
+  const on = config.appPattern.length > 0 || Boolean(config.appPassword);
+  add({
+    ok: on ? true : null,
+    name: 'app lock',
+    detail: on ? `on (${config.appPattern.length ? 'swipe pattern' : 'password'}, ${config.appLockHours} h per unlock)` : 'off · anyone with your install link could drive your sessions',
+    fix: on ? undefined : ['set APP_PATTERN (6+ moves, e.g. up up left right down left) or APP_PASSWORD in ' + ENV],
+  });
+}
+
 function twofa() {
   const pass = Boolean(config.totpPassphrase), pat = config.totpUnlock.length >= 4;
   const vault = fs.existsSync(path.join(config.dataDir, 'totp.enc'));
@@ -123,6 +133,7 @@ function twofa() {
 
 await core();
 await groq();
+lock();
 twofa();
 
 const C = { g: '\x1b[38;2;166;226;46m', p: '\x1b[38;2;255;97;136m', m: '\x1b[38;2;163;158;135m', y: '\x1b[38;2;230;219;116m', x: '\x1b[0m' };
@@ -133,4 +144,4 @@ for (const r of results) {
   for (const f of r.fix ?? []) console.log(`  ${C.m}→${C.x} ${f}`);
 }
 const todo = results.filter((r) => r.ok !== true).length;
-console.log(`\n${todo ? `${todo} to set up. ✗ = broken, – = optional/off.` : 'Everything is set up.'} Restart the relay after editing ${ENV} (npm run up restarts it for you).\n`);
+console.log(`\n${todo ? `${todo} to set up. ✗ = broken, – = optional/off.` : 'Everything is set up.'} The relay restarts by itself when you save ${ENV}.\n`);

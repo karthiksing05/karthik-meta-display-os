@@ -1,14 +1,14 @@
-# Push Claude Shell to your glasses
+# Putting ClaudeProd on your glasses
 
-Meta Ray-Ban Display runs **web apps from an HTTPS URL**. There's nothing to sideload and no
-7-day expiry: you install a link once, and every time you redeploy the relay, the glasses get
-the new version the next time the app opens.
+Meta Ray-Ban Display runs **web apps from an HTTPS address**. There's nothing to sideload and no
+expiry: you install a link once, and the glasses load the latest version from the relay every
+time the app opens.
 
-The relay serves the glasses app itself, so **one HTTPS address covers everything**
-(app and WebSocket).
+The relay serves the glasses app itself, so **one HTTPS address covers everything** (app and
+WebSocket):
 
 ```
-glasses ──(phone's internet)──▶ https://your-relay/  ──▶ relay (Mac or Oracle VM)
+glasses ──(phone's internet)──▶ https://your-mac.your-tailnet.ts.net ──▶ relay on your Mac
 ```
 
 ---
@@ -19,117 +19,87 @@ glasses ──(phone's internet)──▶ https://your-relay/  ──▶ relay (
 |---|---|---|
 | Meta AI app version | Meta AI app → **Settings → App Info → App version** | v272 or later |
 | Glasses version | **Devices → your glasses → gear icon → General → About → Release Version** | v125 or later |
+| Developer Mode | Meta AI app → **Settings → App Info** → tap **App version** 5 times → **Enable** | on (stays on) |
 
-Update either one from the App Store / the Meta AI app if it's older.
+## 1. Start the relay
 
-## 1. Turn on Developer Mode (once)
+Either:
 
-1. Open the **Meta AI** app on your iPhone.
-2. Go to **Settings → App Info**.
-3. Tap the **App version** number **five times**. A pop-up appears.
-4. Tap **Enable**.
+- **The menu bar app (easiest):** `npm run app`. It starts everything and keeps it running.
+- **A terminal:** `npm run up`. Same steps; Ctrl-C stops everything.
 
-It stays on; you never do this again.
+Both install dependencies, write `relay/.env`, install the Claude Code hooks, build the glasses app,
+open a public HTTPS tunnel, start the relay and make the install QR.
 
-## 2. Try it in demo mode first (2 minutes, no keys)
+**The tunnel:** with Tailscale installed and signed in (`brew install --cask tailscale`), the relay
+gets a permanent `https://<mac>.<tailnet>.ts.net` address through Tailscale Funnel. The first time, Tailscale
+prints a link to enable Funnel for your tailnet: open it, then start again. Without Tailscale, a
+Cloudflare quick tunnel is used (`brew install cloudflared`). Its address changes on every start,
+so you'd scan a new QR each time.
 
-On your Mac, in this folder:
+> The glasses can't run Tailscale themselves. Funnel publishes the relay to the normal internet
+> over HTTPS, which is what the glasses need. Your token, and the app lock (step 4), keep it private.
 
-```bash
-npm run setup          # installs everything, writes relay/.env with a random SHELL_TOKEN
-npm run demo           # builds the glasses app and starts the relay with fake data on :8787
-```
+## 2. Install on the glasses
 
-In a second terminal, give it a temporary public HTTPS address:
+Menu bar app → **Install QR** (it refreshes the address and regenerates the QR first), or
+`relay/install-qr.png` from `npm run up`.
 
-```bash
-brew install cloudflared              # once
-cloudflared tunnel --url http://localhost:8787
-```
+1. Point your **iPhone camera** at the QR and tap the link.
+   It's an `fb-viewapp://web_app_deep_link?...` link. A plain QR of the website is **not** recognized.
+2. The Meta AI app shows **Claude Productivity For Meta Display**, marked **unverified** (expected for your own apps).
+3. Confirm. It's added to your glasses' apps. Open it from there.
 
-It prints a URL like `https://random-words.trycloudflare.com`. Then:
+On first launch the app reads the token from the install link, saves it, and removes it from the
+address. You should see the home screen and a green dot in the header (relay connected).
 
-```bash
-npm run qr -- https://random-words.trycloudflare.com
-```
-
-This prints a QR code in the terminal and saves `relay/install-qr.png`.
-
-## 3. Install on the glasses
-
-1. Point your **iPhone camera** at the QR code and tap the link.
-   (It's a `fb-viewapp://web_app_deep_link?...` link; a plain QR of the website is **not** recognized.)
-2. The Meta AI app opens a confirmation screen showing **Claude Shell**.
-   It's marked **unverified** because it isn't reviewed by Meta. That's expected for your own apps.
-3. Confirm. Claude Shell is added to your glasses' apps. Open it from there.
-
-On first launch the app reads the token from the install link, saves it, and removes it from
-the address. You should see the home screen with a `demo` tag and a green dot (relay connected).
-
-> **Keep the QR private.** It contains your `SHELL_TOKEN`. If it leaks, change the token in
-> `relay/.env`, restart the relay and reinstall.
-
-**Already on the phone?** Open `https://<your-url>/install?k=<SHELL_TOKEN>` in the phone's browser
+**Already on the phone?** Open `https://<your-address>/install?k=<SHELL_TOKEN>` in the phone's browser
 and tap **"Tap here instead"**.
 
-## 4. Use a stable address (do this before real use)
+> **Keep the QR private.** It contains your `SHELL_TOKEN`. If it leaks, change the token in
+> `relay/.env` (the relay restarts by itself) and reinstall from a new QR.
 
-`trycloudflare.com` URLs change every time `cloudflared` restarts, which means reinstalling.
-Pick one permanent option:
+## 3. Updating
 
-**A. Tailscale Funnel: free, no domain needed (recommended)**
-
-```bash
-brew install tailscale            # Mac; on the Oracle VM deploy/oracle-setup.sh installs it
-sudo tailscale up                 # log in once
-sudo tailscale funnel --bg 8787   # → https://<machine>.<tailnet>.ts.net
-```
-
-**B. Cloudflare named tunnel: needs a domain on Cloudflare.** See `deploy/cloudflared-config.yml`.
-
-Put the address in `relay/.env` as `PUBLIC_URL=https://…`, restart the relay, run `npm run qr` (no
-argument needed now), and install once more. You won't need to reinstall again.
-
-> The glasses can't run Tailscale themselves. Funnel publishes the relay to the normal internet over
-> HTTPS, which is exactly what the glasses need. The `SHELL_TOKEN` is what keeps it private.
-
-## 5. Updating the app
-
-| Changed | Do this | Reinstall? |
+| Changed | What happens | Reinstall? |
 |---|---|---|
-| Glasses UI (`glasses/`) | `npm run build`, then restart the relay | No. Close and reopen the app on the glasses |
-| Relay (`relay/`) | restart the relay (`npm start`, or `sudo systemctl restart claude-shell` on the VM) | No |
-| Public URL or token | `npm run qr`, scan again | Yes |
+| Glasses UI (`glasses/`) | the app or `npm run up` rebuilds it; the lens reloads itself | No |
+| Relay (`relay/`, `shared/`) | the relay restarts by itself | No |
+| `relay/.env` | the relay restarts by itself | No |
+| Public address or `SHELL_TOKEN` | **Install QR** again and scan | Yes |
 
-On the VM: `cd ~/claude-shell && git pull && npm run build && sudo systemctl restart claude-shell`.
+## 4. Lock the app
 
-## 6. Develop without the glasses
+Set `APP_PATTERN` (a swipe pattern) and/or `APP_PASSWORD` in `relay/.env`. Until you unlock, the relay
+sends the lens nothing and accepts no commands. An unlock lasts `APP_LOCK_HOURS` (default 12) on that
+device. **Settings → app lock** on the lens locks it again right away. See `relay/src/lock.ts`.
 
-- **Simulator:** install the **Meta Ray-Ban Display Simulator** Chrome extension. It recreates the
-  600×600 additive display and D-pad input. Its **View on Glasses QR** feature can also make the
-  install QR for whatever URL you're previewing.
-- **Hot reload:** `npm run dev:demo` → open `http://localhost:5173/?k=<SHELL_TOKEN>` in Chrome.
+## 5. Develop without the glasses
+
+- **Preview:** the menu bar app's **Preview** button, or `http://localhost:8787/?k=<SHELL_TOKEN>`.
   Arrow keys = swipes, Enter = pinch, Escape = back.
-- **Docs inside Claude Code:** `claude mcp add --transport http meta-wearables https://mcp.developer.meta.com/wearables`
+- **Simulator:** the **Meta Ray-Ban Display Simulator** Chrome extension recreates the 600×600 additive
+  display and D-pad input.
+- **Hot reload:** `npm run dev:demo` → `http://localhost:5173/?k=<SHELL_TOKEN>` with fake data.
+- **Meta's docs inside Claude Code:** `claude mcp add --transport http meta-wearables https://mcp.developer.meta.com/wearables`
 
-## Input mapping (what the app expects)
+## Input
 
-| Gesture (Neural Band) | Key the app gets | In Claude Shell |
+| Gesture (Neural Band) | Key the app gets | In ClaudeProd |
 |---|---|---|
-| Thumb swipe up/down/left/right | ArrowUp/Down/Left/Right | move focus. On the approval card: → approve, ← deny, ↓ always |
+| Thumb swipe up/down/left/right | ArrowUp/Down/Left/Right | move focus and scroll. On an approval: → approve, ← deny, ↓ always. In the message reader: scroll |
 | Index pinch | Enter | select |
-| Middle-finger tap | back (Escape / browser history) | back |
-| Text fields | system composer | dictate, handwrite or type, then cleaned by Groq |
+| Middle-finger tap | back (Escape / browser history) | back. Closes the reply box, locks 2FA codes |
+| Text boxes | the system composer | dictate, handwrite or type, then optionally cleaned by Groq |
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| QR opens a web page instead of the Meta AI app | Use the QR from `npm run qr` or `/install`, not a QR of the plain URL |
-| Install fails or "can't open" | URL must be HTTPS with a valid certificate. Plain `http://` and LAN IPs are rejected |
-| "No relay token" screen | You opened the app without `?k=`. Reinstall from the QR |
-| Red dot in the header (relay offline) | Relay not running, or the tunnel is down. Check `curl https://<url>/healthz` |
-| Band battery shows "—" | Expected. Meta doesn't expose the Neural Band's battery to web apps (yet). Glasses battery uses `navigator.getBattery()` |
-
-Still to test on real hardware (phase 0): whether a held pinch reaches web apps, and how the system composer's
-dictation performs for code. See `docs/ARCHITECTURE.md → Phase 0 checklist`.
+| QR opens a web page instead of the Meta AI app | Use **Install QR** / `npm run qr`, not a QR of the plain address |
+| Install fails or "can't open" | The address must be HTTPS with a valid certificate. `http://` and LAN IPs are rejected |
+| "No relay token" screen | The app was opened without the install link. Scan the QR again |
+| Red dot in the header (relay offline) | Relay stopped or the tunnel is down. Check the menu bar app, or `curl https://<address>/healthz` |
+| Stuck on the lock screen | Check `APP_PATTERN` in `relay/.env`. After 5 wrong tries it waits 15 minutes |
+| Funnel hangs on first start | Tailscale printed a link to enable Funnel: open it (the menu bar **Log** shows it) |
+| Band battery | Not shown: Meta doesn't expose the Neural Band's battery to web apps. The header shows the glasses (`navigator.getBattery()`) and your Mac |

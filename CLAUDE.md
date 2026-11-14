@@ -1,6 +1,7 @@
-# Claude Shell: notes for Claude Code
+# ClaudeProd (Claude Productivity For Meta Display): notes for Claude Code
 
-A web app for Meta Ray-Ban Display glasses (`glasses/`) plus a Node relay (`relay/`). Read
+A web app for Meta Ray-Ban Display glasses (`glasses/`), a Node relay (`relay/`) and a macOS menu bar
+app that runs it (`mac/`, Swift, built by `npm run app`). Read
 `docs/ARCHITECTURE.md` first.
 
 ## Hard constraints of the glasses
@@ -24,6 +25,8 @@ A web app for Meta Ray-Ban Display glasses (`glasses/`) plus a Node relay (`rela
 
 ## Checks
 `npm run typecheck`, then `npm run dev:demo` and click through with the arrow keys.
+Mac app changes: `npm run app` (rebuilds, reinstalls and relaunches it). README screenshots use demo data only
+(the repo is public): never commit screenshots, logs or text from real sessions, `relay/.env` or the QR.
 
 ## Meta docs from inside Claude Code
 `claude mcp add --transport http meta-wearables https://mcp.developer.meta.com/wearables`

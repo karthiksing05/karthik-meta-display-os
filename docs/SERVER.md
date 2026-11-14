@@ -8,37 +8,38 @@
 - gives every session an in-process **glasses MCP server** (`notify`, `show_card`, `ask_choice`)
 - answers **"how's everything going?"** across all sessions
 - shows your other Claude Code sessions (terminal, VS Code, Remote Control) through hooks
+- keeps your laptop's own windows in sync with sessions the glasses continued
+- locks the whole app behind a swipe pattern or password (optional, recommended)
 - cleans dictated replies with **Groq** (optional)
 
-It runs anywhere with Node 20+: your Mac to start with, then an Oracle Cloud Always Free VM so it's
-up when your laptop sleeps.
+It runs on your Mac (the normal setup), or on an always-on server ([UPLOAD.md](../UPLOAD.md)).
 
-## Run it on your Mac
+## Run it
 
-```bash
-npm run setup        # npm install + relay/.env with a random SHELL_TOKEN
-# edit relay/.env: at least a Claude credential and REPOS_DIR
-npm start            # builds the glasses app, starts the relay on :8787
-```
+- **Menu bar app:** `npm run app` builds ClaudeProd.app, which runs `deploy/up.sh` and keeps it running.
+- **Terminal:** `npm run up` (Ctrl-C stops it). Options: `--demo`, `--tunnel tailscale|cloudflare`,
+  `--no-watch`, `--no-open`, `--no-prompt`.
 
-Then give it an HTTPS address and install it on the glasses (see `PUSH_TO_GLASSES.md`).
-
-To start it at login, use `deploy/com.claudeshell.relay.plist` (instructions inside).
+Both write `relay/.env`, install the hooks, build the glasses app, open the tunnel, start the relay in
+watch mode (edits to `glasses/`, `relay/`, `shared/` and `relay/.env` go live by themselves) and make
+the install QR. `npm run doctor` checks the whole setup.
 
 ## Claude credentials
 
-Pick one in `relay/.env`:
+`CLAUDE_AUTH` in `relay/.env`:
 
-- **Your Claude subscription:** install Claude Code (`npm i -g @anthropic-ai/claude-code`), run
-  `claude setup-token`, and paste the token into `CLAUDE_CODE_OAUTH_TOKEN`.
-- **API key:** `ANTHROPIC_API_KEY` from console.anthropic.com (billed per use).
+- **`login` (default):** sessions use your Claude Code login on this Mac (`claude` → `/login`),
+  including your claude.ai connectors. Nothing to paste.
+- **`token`:** for a server with no login. Run `claude setup-token` on your Mac and paste the token into
+  `CLAUDE_CODE_OAUTH_TOKEN`, or set `ANTHROPIC_API_KEY` (billed per use). Connectors don't load this way.
 
 Sessions load your normal Claude Code settings (`~/.claude`, each repo's `CLAUDE.md`, MCP servers
 and connectors), so anything you set up for Claude Code works here too.
 
 ## Repos and worktrees
 
-- `REPOS_DIR` (default `~/code`): every subfolder with a `.git` shows up under **new session** on the lens.
+- `REPOS_DIR` (default `~/code`): every git repo up to 3 levels down shows up under **new session**
+  on the lens, most recently used first.
 - Each session runs `git worktree add -b shell/<task>-<id> <WORKTREES_DIR>/<repo>-<task>-<id>`.
   Claude works and commits there. **It never pushes**: pushing is on the always-ask list.
 - Merge when you're happy: `git merge shell/<task>-<id>` in the repo (or ask a session to open a PR).
@@ -69,6 +70,18 @@ npm run hooks -- install     # adds hooks to ~/.claude/settings.json (backup kep
 - Pause and stop stay with wherever the session runs. The hook script does nothing when the relay
   is down, and the relay's own sessions skip it.
 
+### Keeping your laptop in sync
+
+An open VS Code tab or terminal never re-reads its conversation from disk, so it can't show turns the
+glasses added. The relay (`relay/src/desk.ts`) watches which sessions are open on the Mac (each VS Code
+Claude tab runs `claude --resume=<id>`; the hooks report the rest), and:
+
+- after the glasses finish a turn on a laptop session that **isn't** open there, it waits 15 s, lets go
+  of the session and opens it in VS Code (`vscode://anthropic.claude-code/open?session=<id>`) or
+  Terminal, freshly loaded. Turn this off with **settings → laptop sync** on the lens.
+- if a tab **is** open, it's out of date: the lens says so. Close it, then **open on laptop**.
+- **open on laptop** on a session screen does the same on demand.
+
 ## Chats, quick phrases, connectors
 
 - **chat** (hub, sessions, or new): a one-off with no repo, in its own folder under `~/.claude-shell/chats`.
@@ -76,7 +89,7 @@ npm run hooks -- install     # adds hooks to ~/.claude/settings.json (backup kep
   (Gmail, Calendar, Drive, Slack, …) are available. Connect or authorize them at claude.ai → Settings →
   Connectors; new ones show up in the next chat. Connector calls ask for approval like any tool; use
   "↓ always" for the ones you trust. `CLAUDE_AUTH=token` uses the token instead (servers), without connectors.
-- **Quick phrases** (continue, lgtm, expand, …): one pinch sends them to a session, or from the hub
+- **Quick phrases** (continue, lgtm, elaborate, draft plan, summarize): one pinch sends them to a session, or from the hub
   to the session picked with ▾ ("active sessions" = working or open and waiting, never stopped ones).
   Edit `~/.claude-shell/data/phrases.json`; changes show within seconds.
 - **How's everything going?** runs a one-turn summary that is never saved, so it doesn't pile up in
@@ -91,44 +104,47 @@ One preset, set in **Settings → approvals** on the lens:
 | careful | reading files |
 | **balanced** (default) | reads, edits inside the session's worktree, tests, builds, lint, `git status/diff/log/add/commit` |
 | trusting | everything except the dangerous list |
+| everything | everything, the dangerous list included (nothing asks, in any session) |
 
 **↓ always** on an approval card teaches the preset a rule, for example `Bash(npm run migrate *)`.
 These show in Settings, and **forget learned** clears them.
 
-**Always asks, whatever you've set:** `rm -rf`, `sudo`, `git push`, `git reset --hard`, `curl … | sh`,
+**Always asks, unless the preset is *everything*:** `rm -rf`, `sudo`, `git push`, `git reset --hard`, `curl … | sh`,
 `ssh/scp`, `npm publish`, anything touching `.env`, and edits outside the worktree. Logic is in
 `relay/src/approvals.ts`; tweak the lists there if you want.
 
-## Deploy to Oracle Cloud (free, always on)
+## Always on
 
-1. Create an **Always Free** VM (Ubuntu 24.04; Ampere A1 if available).
-2. Put this project on GitHub (private is fine), then on the VM:
-   ```bash
-   REPO_URL=https://github.com/<you>/claude-shell.git bash <(curl -fsSL https://raw.githubusercontent.com/<you>/claude-shell/main/deploy/oracle-setup.sh)
-   ```
-   or copy `deploy/oracle-setup.sh` over and run it.
-3. Edit `~/claude-shell/relay/.env`, clone your repos into `~/code`, run
-   `sudo systemctl restart claude-shell`.
-4. `sudo tailscale up && sudo tailscale funnel --bg 8787` gives you a free HTTPS URL. Put it in `PUBLIC_URL`.
-5. `npm run qr` and scan it.
+To keep sessions reachable while the Mac sleeps, run the relay on a free Oracle Cloud VM instead:
+see [UPLOAD.md](../UPLOAD.md). Logs there: `journalctl -u claude-shell -f`. Back up `~/.claude-shell/data`.
 
-Logs: `journalctl -u claude-shell -f`. Backups: copy `~/.claude-shell/data` (tokens, rules, contacts).
+## App lock
+
+`APP_PATTERN` (a swipe pattern) and/or `APP_PASSWORD` in `relay/.env` lock the whole app
+(`relay/src/lock.ts`):
+
+- A new connection gets nothing (no sessions, no state) and can only send `app.unlock`.
+- The right pattern or password returns a signed pass for that device (`APP_LOCK_HOURS`, default 12),
+  which it sends when it reconnects. Changing the pattern, password or `SHELL_TOKEN` voids every pass.
+- 5 wrong tries lock everyone out for 15 minutes (logged on the relay).
+- **Settings → app lock** on the lens forgets the pass right away.
 
 ## Security notes
 
-- Everything goes through one secret, `SHELL_TOKEN`. It's in the install link, so treat the QR like a password.
+- `SHELL_TOKEN` is in the install link, so treat the QR like a password. Turn on the app lock as well,
+  so a leaked link alone isn't enough.
 - The relay can run commands through Claude. Keep the approval preset on **balanced** or **careful**
-  until you trust your setup.
+  until you trust your setup. *everything* removes the approval check entirely.
 - Text from mail, messages and web pages can contain instructions aimed at Claude (prompt injection).
   The approval card is your check: read what a session wants to run before you swipe →.
-- Want a second lock? Put Cloudflare Access in front of the tunnel, or restrict Funnel.
 
 ## Endpoints
 
 | Path | Auth | What |
 |---|---|---|
 | `/` | none (static UI) | glasses app |
-| `/ws?k=TOKEN` | token | all live data and commands (see `shared/protocol.ts`) |
+| `/ws?k=TOKEN[&s=PASS]` | token (+ app-lock pass) | all live data and commands (see `shared/protocol.ts`) |
 | `/install?k=TOKEN` | token | install QR page |
 | `/hooks` (POST) | token header | Claude Code hook events from your other sessions |
+| `/status.json?k=TOKEN` | token | small summary for the menu bar app (counts, address; no session content) |
 | `/healthz` | none | returns `ok` |

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Run the relay on your Mac at login (instead of, or before, the Oracle VM).
+     1. Fix the two paths below (your node and project folder).
+     2. cp deploy/com.claudeshell.relay.plist ~/Library/LaunchAgents/
+     3. launchctl load ~/Library/LaunchAgents/com.claudeshell.relay.plist
+     Logs: /tmp/claude-shell.log -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.claudeshell.relay</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/karthiksing05/Documents/Independent-Projects/Meta-Display-Customs/relay</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/npm</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/claude-shell.log</string>
+  <key>StandardErrorPath</key><string>/tmp/claude-shell.log</string>
+</dict>
+</plist>

@@ -1,0 +1,18 @@
+# Cloudflare Tunnel (only if you own a domain on Cloudflare; otherwise use Tailscale Funnel).
+#
+#   cloudflared tunnel login
+#   cloudflared tunnel create claude-shell
+#   cloudflared tunnel route dns claude-shell shell.yourdomain.com
+#   cp deploy/cloudflared-config.yml ~/.cloudflared/config.yml   # then edit the two values below
+#   cloudflared tunnel run claude-shell            (or: sudo cloudflared service install)
+#
+# Quick throwaway URL for testing, no account needed (changes every run):
+#   cloudflared tunnel --url http://localhost:8787
+
+tunnel: claude-shell
+credentials-file: /home/ubuntu/.cloudflared/<TUNNEL-ID>.json
+
+ingress:
+  - hostname: shell.yourdomain.com
+    service: http://localhost:8787
+  - service: http_status:404

@@ -1,0 +1,24 @@
+{
+  "name": "claude-shell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Claude-only shell for Meta Ray-Ban Display: glasses web app + relay server.",
+  "workspaces": [
+    "glasses",
+    "relay"
+  ],
+  "scripts": {
+    "setup": "npm install && npm run setup -w relay",
+    "build": "npm run build -w glasses",
+    "start": "npm run build && npm start -w relay",
+    "demo": "npm run build && npm run demo -w relay",
+    "dev": "concurrently -n relay,glasses -c magenta,cyan \"npm run dev -w relay\" \"npm run dev -w glasses\"",
+    "dev:demo": "concurrently -n relay,glasses -c magenta,cyan \"DEMO=1 npm run dev -w relay\" \"npm run dev -w glasses\"",
+    "qr": "npm run qr -w relay --",
+    "typecheck": "npm run typecheck -w glasses && npm run typecheck -w relay",
+    "deploy": "bash deploy/update.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

@@ -28,7 +28,7 @@ let tokens = load<Tokens | null>('spotify', null);
  * The OAuth `state` is signed rather than kept in memory, so a relay restart between "log in" and
  * Spotify's callback (every .env save restarts it) doesn't break the sign-in. Valid for 15 minutes.
  */
-const sign = (v: string) => createHmac('sha256', `spotify-state:${config.token}:${config.spotifySecret}`).update(v).digest('hex').slice(0, 32);
+const sign = (v: string) => createHmac('sha256', `spotify-state:${config.token}`).update(v).digest('hex').slice(0, 32);
 const newState = () => {
   const v = `${Date.now()}.${randomBytes(6).toString('hex')}`;
   return `${v}.${sign(v)}`;

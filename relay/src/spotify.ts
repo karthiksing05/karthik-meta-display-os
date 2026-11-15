@@ -98,7 +98,7 @@ async function access(): Promise<string | null> {
   return tokens.access!;
 }
 
-async function api(method: string, path: string, body?: unknown) {
+export async function api(method: string, path: string, body?: unknown) {
   const tok = await access();
   if (!tok) return null;
   const res = await fetch(`https://api.spotify.com/v1${path}`, {

@@ -157,6 +157,14 @@ export function publish() {
 onDeskChange(publish);
 
 /** Claude session IDs the relay runs itself (so hooks from them are ignored). */
+/** The saved Claude conversation behind a lens session (for a read-only status fork), if there is one yet. */
+export function sdkTargetOf(s: SessionInfo): { sdkId: string; cwd: string } | null {
+  const l = live.get(s.id);
+  const cwd = l ? l.saved.worktree || l.info.cwd : s.cwd;
+  if (l) return l.saved.sdkSessionId && cwd ? { sdkId: l.saved.sdkSessionId, cwd } : null;
+  return s.source === 'external' && s.cwd ? { sdkId: s.id, cwd: s.cwd } : null;
+}
+
 export function ownsSdkSession(sdkId: string) {
   for (const l of live.values()) if (l.saved.sdkSessionId === sdkId) return true;
   return false;

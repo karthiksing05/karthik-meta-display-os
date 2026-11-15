@@ -16,7 +16,7 @@ const toggle = (k: string, on: boolean) => (on ? open.add(k) : open.delete(k), s
 function checkStatus() {
   checking = true;
   send({ t: 'status.check' });
-  localNotify("checking how everything's going…", 'info');
+  localNotify('asking each session how it is going… (about 30 s)', 'info');
   store.emit();
 }
 

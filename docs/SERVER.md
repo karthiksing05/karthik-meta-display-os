@@ -89,10 +89,13 @@ Claude tab runs `claude --resume=<id>`; the hooks report the rest), and:
   (Gmail, Calendar, Drive, Slack, …) are available. Connect or authorize them at claude.ai → Settings →
   Connectors; new ones show up in the next chat. Connector calls ask for approval like any tool; use
   "↓ always" for the ones you trust. `CLAUDE_AUTH=token` uses the token instead (servers), without connectors.
-- **Quick phrases** (continue, lgtm, elaborate, draft plan, summarize): one pinch sends them to a session, or from the hub
-  to the session picked with ▾ ("active sessions" = working or open and waiting, never stopped ones).
+- **Quick phrases** (continue, lgtm, elaborate, draft plan, summarize): one pinch sends them to a session.
   Edit `~/.claude-shell/data/phrases.json`; changes show within seconds.
-- **How's everything going?** runs a one-turn summary: a 2-3 sentence overview and a line or two per
+- **How's everything going?** asks each recent session itself (up to 8, active in the last day, 4 at a
+  time, about 30 s): "where are you, what's done, what's next, anything blocking?". The question goes to a
+  **fork** of the session (`forkSession`, `persistSession: false`, no hooks, no tools): Claude with that
+  session's full context, but nothing is written back, so the real session isn't interrupted or changed
+  and laptop tabs don't go stale. Those answers are summarized into a 2-3 sentence overview and a line or two per
   session, each with **since last**, what changed since the previous check (kept in
   `DATA_DIR/last-status.json`). Everything scrolls, and pinching the overview opens it in the reader.
   The summary is never saved as a Claude session, so it doesn't pile up in your session lists.

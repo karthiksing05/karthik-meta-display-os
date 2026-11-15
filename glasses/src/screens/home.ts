@@ -8,7 +8,7 @@ import { on } from './util.ts';
 /**
  * Home is the Claude hub, on one screen with no scrolling: the pixel band, "how's everything going?"
  * (focused first) with the last report next to it, anything waiting on you (approvals, Claude's
- * questions), and one row of tiles: sessions, new, chat, music (Spotify), 2fa, settings.
+ * questions, one line each), and two rows of tiles: sessions, new, chat, music (Spotify), 2fa, settings.
  */
 register('home', {
   render() {
@@ -17,12 +17,11 @@ register('home', {
     const running = sessions.filter((x) => x.status === 'running' || x.status === 'starting').length;
     const asks = (s?.approvals.length ?? 0) + (s?.questions.length ?? 0);
 
-    // One row of six small tiles: icon, title, one short line.
+    // Two rows of three tiles: icon and title, then one short line.
     const tile = (key: string, ic: string, color: string, title: string, sub: string) =>
-      `<button class="tile" data-f="tile:${key}" style="height:76px;padding:7px 8px;gap:2px;min-width:0">
-        <span style="color:${color};line-height:0">${icon(ic, 18)}</span>
-        <span class="small ellipsis" style="color:${color};font-weight:700">${title}</span>
-        <span class="s ellipsis" style="font-size:12px">${sub}</span>
+      `<button class="tile" data-f="tile:${key}" style="height:62px;padding:8px 10px;gap:4px;min-width:0">
+        <span class="t" style="color:${color};gap:8px">${icon(ic, 19)}<span class="ellipsis">${title}</span></span>
+        <span class="s ellipsis" style="font-size:13px">${sub}</span>
       </button>`;
 
     const label = `<div class="row" style="gap:8px">${icon('claude', 18, C.orange)}<span style="color:${C.orange};font-weight:700">claude</span>
@@ -30,9 +29,9 @@ register('home', {
 
     const h = s?.host;
     const t = s?.track;
-    const tiles = `<div class="tiles" style="grid-template-columns:repeat(6,minmax(0,1fr));gap:6px">
-        ${tile('sessions', 'sessions', C.yellow, 'sessions', `<span class="v">${sessions.length}</span> · ${running} run`)}
-        ${tile('newSession', 'plus', C.green, 'new', 'repo')}
+    const tiles = `<div class="tiles" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+        ${tile('sessions', 'sessions', C.yellow, 'sessions', `<span class="v">${sessions.length}</span> · ${running} running`)}
+        ${tile('newSession', 'plus', C.green, 'new', 'in a repo')}
         ${tile('chat', 'ask', C.orange, 'chat', 'no repo')}
         ${tile('spotify', 'music', C.green, 'music', t ? `${t.playing ? '▶' : '❚❚'} ${esc(t.title)}` : s?.integrations.spotify ? 'nothing on' : 'sign in')}
         ${tile('twofa', 'key', C.purple, '2fa', s?.integrations.totp || s?.integrations.demo ? 'locked' : 'off')}
@@ -42,7 +41,7 @@ register('home', {
     return `${header(BRAND)}
     <main style="gap:8px">
       <canvas class="pixels" id="pixels"></canvas>
-      ${hubBody(tiles, label)}
+      ${hubBody(tiles, label, true)}
     </main>
     ${footer('swipe to move · pinch to select')}`;
   },

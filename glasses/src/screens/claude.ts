@@ -25,7 +25,7 @@ function checkStatus() {
  * whatever's waiting on you, then `nav` (the caller's own buttons or tiles), then the ask bar
  * (dictate / handwrite, and who to ask) and the quick-send phrases.
  */
-export function hubBody(nav: string, label = '') {
+export function hubBody(nav: string, label = '', compact = false) {
   {
     const s = store.state;
     const sessions = s?.sessions ?? [];
@@ -35,7 +35,13 @@ export function hubBody(nav: string, label = '') {
 
 
     const q = questions[0];
-    const qCard = q
+    // Compact (home): one line; pinch it to open the full question on the claude screen.
+    const qLine = q
+      ? `<button class="item" data-f="question" style="border-color:${C.orange}">
+          ${icon('ask', 20, C.orange)}<span class="grow ellipsis"><span class="o">${esc(q.sessionName)} asks</span> · ${esc(q.question)}</span>
+        </button>`
+      : '';
+    const qCard = compact ? qLine : q
       ? `<div class="card warn">
           <div class="label">${esc(q.sessionName)} asks · ${esc(q.header)}${questions.length > 1 ? ` · +${questions.length - 1} more` : ''}</div>
           <div class="clamp2">${esc(q.question)}</div>
@@ -54,8 +60,8 @@ export function hubBody(nav: string, label = '') {
 
     return `${label}
       <div class="row" style="gap:8px">
-        ${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'primary big grow', icon: 'pulse', def: true })}
-        ${r ? btn('report', `last · ${agoText(r.at)}`, { cls: 'big' }) : ''}
+        ${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'primary big main-action', icon: 'pulse', def: true })}
+        ${r ? btn('report', `last · ${agoText(r.at)}`, { cls: 'big side' }) : ''}
       </div>
       ${aCard}
       ${qCard}
@@ -68,6 +74,7 @@ export function hubMount(root: HTMLElement) {
     const s = store.state;
     on(root, 'status', checkStatus);
     on(root, 'report', () => go('report'));
+    on(root, 'question', () => go('claude'));
     on(root, 'approvals', () => go('approval'));
     on(root, 'sessions', () => go('sessions'));
     on(root, 'new', () => go('newSession'));

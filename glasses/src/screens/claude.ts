@@ -214,7 +214,7 @@ const GROUPS: [string, (x: SessionInfo, asks: Set<string>) => boolean][] = [
 ];
 
 function tags(x: SessionInfo) {
-  return `${x.source === 'external' ? '<span class="src c">ext</span>' : ''}${x.kind === 'chat' ? '<span class="src v">chat</span>' : ''}${
+  return `${x.source === 'external' ? '<span class="src c">ext</span>' : ''}${x.notes ? '<span class="src c">notes</span>' : x.kind === 'chat' ? '<span class="src v">chat</span>' : ''}${
     x.desk ? `<span class="src g">${x.desk === 'vscode' ? 'vs code' : 'term'}</span>` : ''
   }`;
 }

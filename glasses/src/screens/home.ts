@@ -8,7 +8,7 @@ import { on } from './util.ts';
 /**
  * Home is the Claude hub, on one screen with no scrolling: the pixel band, "how's everything going?"
  * (focused first) with the last report next to it, anything waiting on you (approvals, Claude's
- * questions, one line each), and two rows of tiles: sessions, new, chat, 2fa, settings.
+ * questions, one line each), and two rows of tiles: sessions, new, chat, notes, 2fa, settings.
  */
 register('home', {
   render() {
@@ -32,8 +32,9 @@ register('home', {
         ${tile('sessions', 'sessions', C.yellow, 'sessions', `<span class="v">${sessions.length}</span> · ${running} running`)}
         ${tile('newSession', 'plus', C.green, 'new', 'in a repo')}
         ${tile('chat', 'ask', C.orange, 'chat', 'no repo')}
+        ${tile('notes', 'note', C.cyan, 'notes', 'dictate a change')}
         ${tile('twofa', 'key', C.purple, '2fa', s?.integrations.totp || s?.integrations.demo ? 'locked' : 'off')}
-        ${tile('settings', 'gear', C.purple, 'settings', store.connected ? `mac ${h?.battery ?? '—'}%${h?.charging ? '⚡' : ''}` : '<span class="p">offline</span>', true)}
+        ${tile('settings', 'gear', C.purple, 'settings', store.connected ? `mac ${h?.battery ?? '—'}%${h?.charging ? '⚡' : ''}` : '<span class="p">offline</span>')}
       </div>`;
 
     return `${header(BRAND)}
@@ -47,6 +48,7 @@ register('home', {
     attachPixels(root.querySelector('#pixels') as HTMLCanvasElement);
     hubMount(root);
     for (const k of ['sessions', 'newSession', 'twofa', 'settings']) on(root, `tile:${k}`, () => go(k));
+    on(root, 'tile:notes', () => go('compose', { kind: 'notes', title: 'notes', auto: Date.now() }));
     on(root, 'tile:chat', () => go('compose', { kind: 'new', repo: '', title: 'chat with claude' }));
   },
 });

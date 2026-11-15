@@ -19,7 +19,7 @@ app that runs it (`mac/`, Swift, built by `npm run app`). Read
 - Protocol changes go in `shared/protocol.ts` first; both sides typecheck against it.
 - The relay sends full state snapshots; screens are pure `render(params) → html` + `mount()` for handlers.
 - Secrets and API keys live only on the relay.
-- Scope: Claude session monitoring, plus opt-in 2FA codes (docs/TWO_FACTOR.md). Spotify was tried and removed. Don't add other features the glasses' own OS already has (maps, messages, calls, photos).
+- Scope: Claude session monitoring, plus opt-in 2FA codes (docs/TWO_FACTOR.md) and the notes tile (one Claude session that edits Apple Notes, relay/src/notes.ts). Spotify was tried and removed. Don't add other features the glasses' own OS already has (maps, messages, calls, photos).
 - Claude only: never add Meta AI, WebMCP or Meta connector integrations.
 
 ## Checks

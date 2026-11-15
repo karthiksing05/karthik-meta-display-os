@@ -9,7 +9,7 @@ import { config } from './config.ts';
 import { hub, state } from './hub.ts';
 import {
   answerQuestion, askAll, allSessions, decideApproval, interruptSession, restoreSessions, scanRepos,
-  openSessionOnDesk, sendToSession, startSession, stopSession,
+  askNotes, openSessionOnDesk, sendToSession, startSession, stopSession,
 } from './sessions.ts';
 import { statusReport } from './status.ts';
 import { cleanDictation } from './dictation.ts';
@@ -248,6 +248,9 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       if (!config.claudeAvailable) throw new Error('Claude is not configured on the relay (see relay/.env)');
       await startSession(msg.repo, msg.prompt, msg.name);
       return;
+    case 'notes.ask':
+      if (!config.claudeAvailable) throw new Error('Claude is not configured on the relay (see relay/.env)');
+      return reply(ws, { t: 'notes.opened', id: await askNotes(msg.text) });
     case 'session.send':
       return sendToSession(msg.id, msg.text);
     case 'session.stop':

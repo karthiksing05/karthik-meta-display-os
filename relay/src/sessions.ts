@@ -10,6 +10,7 @@ import { hub, state } from './hub.ts';
 import { load, save } from './store.ts';
 import { decide, previewFor, ruleFor, titleFor } from './approvals.ts';
 import { CHAT_PROMPT, glassesMcp, GLASSES_PROMPT, WORKTREE_NOTE } from './glassesMcp.ts';
+import { NOTES_PROMPT, notesDir, notesMcp } from './notes.ts';
 import { deskOf, onDeskChange, openOnDesk } from './desk.ts';
 import { externalAnswer, externalDecide, externalList, externalSend, forgetExternal } from './external.ts';
 
@@ -58,6 +59,8 @@ interface Saved {
   kind?: 'code' | 'chat';
   /** An outside session (terminal / VS Code / Remote Control) the relay continued in place, same session ID. */
   adopted?: boolean;
+  /** The one notes session (the notes tile): Apple Notes tools, always the same folder. */
+  notes?: boolean;
 }
 
 interface Live {
@@ -187,7 +190,7 @@ export function restoreSessions() {
       q: null,
       abort: null,
       info: {
-        id: s.id, name: s.name, repo: s.repo, branch: s.branch, status: 'stopped', source: 'shell', cwd: s.worktree, kind: s.kind ?? 'code',
+        id: s.id, name: s.name, repo: s.repo, branch: s.branch, status: 'stopped', source: 'shell', cwd: s.worktree, kind: s.kind ?? 'code', notes: s.notes,
         startedAt: s.startedAt, lastActivity: s.startedAt, activity: 'stopped · send a message to resume',
         progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], costUsd: s.costUsd,
       },
@@ -198,21 +201,21 @@ export function restoreSessions() {
 }
 
 /** repo '' starts a one-off chat: no repo, its own empty folder, your connectors available. */
-export async function startSession(repo: string, prompt: string, name?: string): Promise<string> {
+export async function startSession(repo: string, prompt: string, name?: string, notes = false): Promise<string> {
   const id = randomUUID();
-  const title = name?.trim() || prompt.split(/[.?!\n]/)[0].slice(0, 40) || 'chat';
+  const title = notes ? 'notes' : name?.trim() || prompt.split(/[.?!\n]/)[0].slice(0, 40) || 'chat';
   const kind = repo ? 'code' : 'chat';
   let branch = '', worktree: string, base = '';
   if (kind === 'code') ({ branch, worktree, base } = await makeWorktree(repo, title, id));
-  else fs.mkdirSync((worktree = path.join(config.chatsDir, `${slug(title)}-${id.slice(0, 4)}`)), { recursive: true });
-  const saved: Saved = { id, name: title, repo: repo || 'chat', branch, worktree, base, sdkSessionId: null, startedAt: Date.now(), costUsd: 0, kind };
+  else fs.mkdirSync((worktree = notes ? notesDir : path.join(config.chatsDir, `${slug(title)}-${id.slice(0, 4)}`)), { recursive: true });
+  const saved: Saved = { id, name: title, repo: notes ? 'notes' : repo || 'chat', branch, worktree, base, sdkSessionId: null, startedAt: Date.now(), costUsd: 0, kind, ...(notes ? { notes } : {}) };
   const l: Live = {
     saved,
     inbox: null,
     q: null,
     abort: null,
     info: {
-      id, name: title, repo: saved.repo, branch, status: 'starting', source: 'shell', cwd: worktree, kind, startedAt: saved.startedAt, lastActivity: Date.now(),
+      id, name: title, repo: saved.repo, branch, status: 'starting', source: 'shell', cwd: worktree, kind, notes: notes || undefined, startedAt: saved.startedAt, lastActivity: Date.now(),
       activity: 'starting', progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], costUsd: 0,
     },
   };
@@ -243,7 +246,11 @@ function spawn(l: Live, firstMessage: string) {
       // In login mode it also drops the token so your login (and claude.ai connectors) are used.
       env: claudeEnv({ CLAUDE_SHELL_OWNED: '1' }),
       settingSources: ['user', 'project', 'local'],
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: l.info.kind === 'chat' ? CHAT_PROMPT : l.saved.adopted ? GLASSES_PROMPT : `${GLASSES_PROMPT}\n${WORKTREE_NOTE}` },
+      systemPrompt: {
+        type: 'preset',
+        preset: 'claude_code',
+        append: l.saved.notes ? `${CHAT_PROMPT}\n${NOTES_PROMPT}` : l.info.kind === 'chat' ? CHAT_PROMPT : l.saved.adopted ? GLASSES_PROMPT : `${GLASSES_PROMPT}\n${WORKTREE_NOTE}`,
+      },
       mcpServers: {
         glasses: glassesMcp({
           sessionId: sid,
@@ -253,6 +260,7 @@ function spawn(l: Live, firstMessage: string) {
               (a) => Object.values(a)[0] ?? '',
             ),
         }),
+        ...(l.saved.notes ? { notes: notesMcp() } : {}),
       },
       canUseTool: (toolName, input, { signal }) => canUseTool(l, toolName, input, signal),
     },
@@ -342,6 +350,9 @@ async function canUseTool(l: Live, tool: string, input: Record<string, unknown>,
     }
     return { behavior: 'allow', updatedInput: { ...input, answers } };
   }
+
+  // The notes session's own Apple Notes tools (they back up before every rewrite).
+  if (l.saved.notes && tool.startsWith('mcp__notes__')) return { behavior: 'allow', updatedInput: input };
 
   const verdict = decide(state.settings.approvals, state.settings.learnedRules, tool, input, l.saved.worktree);
   if (verdict === 'allow') return { behavior: 'allow', updatedInput: input };
@@ -433,6 +444,16 @@ export function sendToSession(id: string, text: string) {
     spawn(l, text); // resumes the saved Claude session
   }
   publish();
+}
+
+/** The notes tile: send to the one notes session, starting it the first time. Returns its id. */
+export async function askNotes(text: string): Promise<string> {
+  const l = [...live.values()].find((x) => x.saved.notes);
+  if (l) {
+    sendToSession(l.info.id, text);
+    return l.info.id;
+  }
+  return startSession('', text, 'notes', true);
 }
 
 /**

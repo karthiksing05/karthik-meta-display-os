@@ -36,6 +36,8 @@ export interface SessionInfo {
   cwd?: string;
   /** code = a repo session (own worktree, or an outside session in a repo); chat = a one-off with no repo. */
   kind: 'code' | 'chat';
+  /** The notes session (the notes tile on home): edits Apple Notes. */
+  notes?: boolean;
   /** Open on the laptop right now (a VS Code tab or a terminal). Those windows don't refresh on their own. */
   desk?: 'vscode' | 'terminal';
 }
@@ -154,6 +156,8 @@ export type ClientMsg =
   | { t: 'question.answer'; id: string; answers: Record<string, string> }
   | { t: 'ask'; target: 'all' | string; text: string }
   | { t: 'status.check' }
+  /** The notes tile: dictated text for the notes session (started the first time). */
+  | { t: 'notes.ask'; text: string }
   | { t: 'dictation.clean'; reqId: string; text: string; context?: string }
   | { t: 'settings.set'; patch: Partial<Settings> }
   | { t: 'rules.clear' }
@@ -169,6 +173,8 @@ export type ClientMsg =
 export type ServerMsg =
   | { t: 'state'; state: ShellState }
   | { t: 'status.report'; report: StatusReport }
+  /** Reply to notes.ask: the notes session's id, to open it. */
+  | { t: 'notes.opened'; id: string }
   /** App lock: nothing else is sent until you unlock. */
   | { t: 'app.locked'; method: 'pattern' | 'password'; reason?: string; triesLeft?: number }
   /** Unlocked: keep `pass` and connect with it (?s=) until `until`. */

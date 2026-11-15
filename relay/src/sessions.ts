@@ -435,6 +435,26 @@ export function sendToSession(id: string, text: string) {
   publish();
 }
 
+/**
+ * Send a real message into a session's chat (same path as replying from the lens) and wait for
+ * Claude's reply to it. Resolves with the reply text, or '' if none came within timeoutMs.
+ */
+export async function askInChat(id: string, text: string, timeoutMs: number): Promise<string> {
+  const t0 = Date.now();
+  sendToSession(id, text);
+  const reply = () =>
+    (live.get(id)?.info.transcript ?? [])
+      .filter((t) => t.at >= t0 && t.role === 'claude')
+      .map((t) => t.text)
+      .join('\n');
+  while (Date.now() - t0 < timeoutMs) {
+    await sleep(500);
+    const st = live.get(id)?.info.status;
+    if (st === 'idle' || st === 'error' || st === 'stopped') return reply();
+  }
+  return reply(); // still going: whatever it has said so far
+}
+
 // ---------- keeping the laptop in sync ----------
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const deskName = (d: string) => (d === 'vscode' ? 'VS Code tab' : 'terminal');

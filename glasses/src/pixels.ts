@@ -3,44 +3,40 @@ import { C } from './ui.ts';
 /**
  * Pixel band on the home screen: mountains at sunset, seen from a slowly moving train.
  *
- * Three ranges back to front (purple peaks with snow, cyan ridges, green foothills) scroll sideways
- * at different speeds, so the near hills pass quickly and the far peaks drift by (parallax); the sun
- * slips behind the peaks and out again. The sun's stripes sink slowly and the stars twinkle.
- * Ridgelines are lit and the slopes below are dithered, so the band stays airy on the additive
- * display. It moves for 30 s after you wake the lens or press a key, then holds still to save battery;
- * the next wake carries on from where it stopped.
+ * The scenery is pixel art (a 144×34 grid of 3 px dots), but it moves smoothly: each range is drawn
+ * once into its own strip and slid sideways by fractional pixels, the near foothills fastest and the
+ * snowy far peaks slowest (parallax). The sun sits still behind them, its stripes sinking slowly, and
+ * the stars twinkle. Nearer ranges hide whatever is behind them, so the dithered slopes stay airy on
+ * the additive display without the far range showing through.
+ *
+ * It moves for 30 s after you wake the lens or press a key, then holds still to save battery; the
+ * next wake carries on from where it stopped.
  */
-const COLS = 64;
-const ROWS = 15;
-const CELL = 8;
-const GAP = 1;
+const COLS = 144;
+const ROWS = 34;
+const PITCH = 4; // px per grid cell
+const DOT = 3; // px of it that's lit (the rest is the gap that makes it look like pixels)
+const S = 2.25; // grid cells per scene unit: the scene is laid out on a 64 × 15 unit band
 const ACTIVE_MS = 30_000;
-const FPS = 12;
+const W = COLS * PITCH - (PITCH - DOT);
+const H = ROWS * PITCH - (PITCH - DOT);
 
-type Px = [string, number] | null; // colour, alpha
-type Peak = [x: number, top: number, slope: number];
+type Peak = [x: number, top: number, slope: number]; // in scene units
 
 /** Tiny deterministic hash so the jagged edges look the same every time. */
 const hash = (n: number) => {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
 };
+/** Smooth 1-D value noise: rough ridgelines without single-cell spikes. */
+const noise = (x: number, seed: number) => {
+  const i = Math.floor(x);
+  const f = x - i;
+  const k = f * f * (3 - 2 * f);
+  return hash(i + seed) * (1 - k) + hash(i + 1 + seed) * k;
+};
 
-/**
- * Top row of a range at world column wx: the highest of its peaks there, roughened a little.
- * The range repeats every `period` columns, so it can scroll forever.
- */
-function ridge(wx: number, peaks: Peak[], period: number, seed: number): number {
-  const x = ((wx % period) + period) % period;
-  let top = ROWS;
-  for (const [px, pt, slope] of peaks) {
-    const dx = Math.abs(x - px);
-    top = Math.min(top, pt + Math.min(dx, period - dx) * slope);
-  }
-  return Math.round(top + (hash(x + seed) - 0.5) * 0.9);
-}
-
-/** speed = columns per second; nearer ranges move faster. */
+/** speed in scene units per second; period = how often the range repeats, in scene units. */
 const ranges: { peaks: Peak[]; period: number; speed: number; color: string; edge: number; fill: number; seed: number; snow?: number }[] = [
   // far: tall, steep, snow on the tops
   { peaks: [[7, 1, 0.75], [19, 3, 0.85], [47, 0, 0.7], [60, 2, 0.9], [78, 2, 0.8]], period: 90, speed: 0.35, color: C.purple, edge: 0.75, fill: 0.3, seed: 1, snow: 2 },
@@ -51,62 +47,127 @@ const ranges: { peaks: Peak[]; period: number; speed: number; color: string; edg
 ];
 
 const SUN = { x: 33, y: 6.5, r: 4 };
-const STARS = [[4, 1], [15, 0], [21, 2], [29, 1], [38, 3], [49, 0], [55, 1], [62, 2], [1, 4], [61, 5], [10, 3], [44, 2]];
+const STARS = [[4, 1], [15, 0.4], [21, 2], [29, 1], [38, 3], [49, 0.3], [55, 1.2], [62, 2], [1, 4], [61, 5], [10, 3], [44, 2], [25, 3.6], [57, 3.4]];
+
+const dot = (ctx: CanvasRenderingContext2D, gx: number, gy: number, color: string, alpha: number) => {
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = color;
+  ctx.fillRect(gx * PITCH, gy * PITCH, DOT, DOT);
+};
+
+/** One range as pixel art, one period wide, plus a solid silhouette used to hide what's behind it. */
+function drawRange(r: (typeof ranges)[number]) {
+  const cols = Math.round(r.period * S);
+  const unit = r.period / cols; // scene units per column, exact so the strip tiles seamlessly
+  const art = document.createElement('canvas');
+  const mask = document.createElement('canvas');
+  art.width = mask.width = cols * PITCH;
+  art.height = mask.height = H;
+  const a = art.getContext('2d')!;
+  const m = mask.getContext('2d')!;
+  for (let gx = 0; gx < cols; gx++) {
+    const u = gx * unit;
+    let top = 99;
+    for (const [px, pt, slope] of r.peaks) {
+      const dx = Math.abs(u - px);
+      top = Math.min(top, pt + Math.min(dx, r.period - dx) * slope);
+    }
+    top += (noise(u * 1.3, r.seed) - 0.5) * 1.1 + (noise(u * 4, r.seed + 7) - 0.5) * 0.35;
+    const first = Math.max(0, Math.ceil(top * S));
+    m.fillRect(gx * PITCH, first * PITCH, PITCH, H);
+    for (let gy = first; gy < ROWS; gy++) {
+      const d = gy - first;
+      const snowy = r.snow !== undefined && top <= r.snow + 1;
+      if (d === 0) dot(a, gx, gy, snowy ? C.fg : r.color, snowy ? 0.95 : r.edge);
+      else if (snowy && d < 3) dot(a, gx, gy, C.fg, 0.75 - d * 0.15);
+      else if (d < 3 && (gx + gy) % 2 === 0) dot(a, gx, gy, r.color, r.fill * 1.3);
+      else if (d < 5 && (gx + gy) % 4 === 0) dot(a, gx, gy, r.color, r.fill * 0.9);
+    }
+  }
+  return { art, mask, width: cols * PITCH };
+}
+
+/** The sun as pixel art: yellow → orange → pink, top to bottom. */
+function drawSun() {
+  const c = document.createElement('canvas');
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext('2d')!;
+  for (let gy = 0; gy < ROWS; gy++)
+    for (let gx = 0; gx < COLS; gx++) {
+      const u = (gx + 0.5) / S;
+      const v = (gy + 0.5) / S;
+      if (Math.hypot(u - SUN.x, (v - SUN.y) * 1.15) > SUN.r) continue;
+      const k = (v - (SUN.y - SUN.r)) / (2 * SUN.r); // 0 top → 1 bottom
+      dot(ctx, gx, gy, k < 0.35 ? C.yellow : k < 0.65 ? C.orange : C.pink, 0.9);
+    }
+  return c;
+}
 
 let canvas: HTMLCanvasElement | null = null;
+let layers: ReturnType<typeof drawRange>[] = [];
+let sun: HTMLCanvasElement | null = null;
+let sunNow: HTMLCanvasElement | null = null;
 let activeUntil = 0;
 let raf = 0;
-let frame = 0;
+let elapsed = 0; // seconds of motion so far; only advances while active
 
-function scene(time: number): Px[][] {
-  const g: Px[][] = Array.from({ length: ROWS }, () => Array<Px>(COLS).fill(null));
+function draw() {
+  const ctx = canvas?.getContext('2d');
+  if (!ctx || !canvas || !sun || !sunNow) return;
+  const t = elapsed;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.clearRect(0, 0, W, H);
 
   // Stars twinkle, each at its own pace.
   for (const [x, y] of STARS) {
-    const tw = 0.5 + 0.5 * Math.sin(time * (0.8 + hash(x + y * 3) * 1.6) + hash(x * 7 + y) * 6.3);
-    if (tw > 0.15) g[y][x] = [hash(x * 7 + y) > 0.5 ? C.fg : C.yellow, 0.15 + tw * 0.45];
+    const tw = 0.5 + 0.5 * Math.sin(t * (0.8 + hash(x + y * 3) * 1.6) + hash(x * 7 + y) * 6.3);
+    dot(ctx, Math.round(x * S), Math.round(y * S), hash(x * 7 + y) > 0.5 ? C.fg : C.yellow, 0.1 + tw * 0.5);
   }
 
-  // The sun: banded yellow → orange → pink top to bottom, with stripes that slowly sink.
-  const sink = Math.floor(time * 1.2);
-  for (let y = 0; y < ROWS; y++)
-    for (let x = 0; x < COLS; x++) {
-      const d = Math.hypot(x - SUN.x, (y - SUN.y) * 1.15);
-      if (d > SUN.r) continue;
-      const v = (y - (SUN.y - SUN.r)) / (2 * SUN.r); // 0 top → 1 bottom
-      if (v > 0.5 && (y - sink) % 2 !== 0) continue; // the stripes
-      g[y][x] = [v < 0.35 ? C.yellow : v < 0.65 ? C.orange : C.pink, 0.9];
-    }
-
-  // Ranges back to front; nearer ones cover farther ones.
-  for (const r of ranges) {
-    const shift = Math.floor(time * r.speed);
-    for (let x = 0; x < COLS; x++) {
-      const wx = x + shift;
-      const top = Math.max(0, ridge(wx, r.peaks, r.period, r.seed));
-      for (let y = top; y < ROWS; y++) {
-        const depth = y - top;
-        if (depth === 0) {
-          const snowy = r.snow !== undefined && top <= r.snow + 1;
-          g[y][x] = [snowy ? C.fg : r.color, snowy ? 0.95 : r.edge];
-        } else if (depth === 1 && r.snow !== undefined && top <= r.snow) {
-          g[y][x] = [C.fg, 0.6];
-        } else {
-          // Dither just under the ridge, fading out: the next range shows through below.
-          // It's keyed to the world column so the pattern travels with the mountain.
-          const on = depth === 1 ? (wx + y) % 2 === 0 : depth === 2 ? (wx + y) % 4 === 0 : false;
-          g[y][x] = on ? [r.color, r.fill * (depth === 1 ? 1.3 : 0.9)] : null;
-        }
-      }
-    }
+  // The sun, with stripes across its lower half that sink smoothly.
+  const s = sunNow.getContext('2d')!;
+  s.globalCompositeOperation = 'source-over';
+  s.clearRect(0, 0, W, H);
+  s.drawImage(sun, 0, 0);
+  s.globalCompositeOperation = 'destination-out';
+  const band = 2.6 * PITCH; // stripe period in px
+  const mid = SUN.y * S * PITCH;
+  const bottom = (SUN.y + SUN.r) * S * PITCH;
+  for (let y = mid + ((t * 6) % band); y < bottom; y += band) {
+    const gap = band * (0.2 + (0.35 * (y - mid)) / (bottom - mid)); // gaps widen toward the bottom
+    s.fillRect(0, y, W, gap);
   }
-  return g;
+  ctx.globalAlpha = 1;
+  ctx.drawImage(sunNow, 0, 0);
+
+  // Ranges back to front: erase the silhouette, then draw the art, both slid smoothly.
+  ranges.forEach((r, i) => {
+    const L = layers[i];
+    const off = (t * r.speed * S * PITCH) % L.width;
+    for (const x of [-off, L.width - off]) {
+      if (x >= W) continue;
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.drawImage(L.mask, x, 0);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(L.art, x, 0);
+    }
+  });
+  ctx.globalCompositeOperation = 'source-over';
 }
 
 export function attachPixels(el: HTMLCanvasElement) {
   canvas = el;
-  el.width = COLS * (CELL + GAP) - GAP;
-  el.height = ROWS * (CELL + GAP) - GAP;
+  el.width = W;
+  el.height = H;
+  if (!layers.length) {
+    layers = ranges.map(drawRange);
+    sun = drawSun();
+    sunNow = document.createElement('canvas');
+    sunNow.width = W;
+    sunNow.height = H;
+  }
   draw();
   wake();
 }
@@ -123,27 +184,10 @@ function loop() {
       raf = 0;
       return;
     }
-    if (ts - last > 1000 / FPS) {
-      last = ts;
-      frame++;
-      draw();
-    }
+    if (last) elapsed += Math.min(0.1, (ts - last) / 1000); // a long pause doesn't make it jump
+    last = ts;
+    draw();
     raf = requestAnimationFrame(tick);
   };
   raf = requestAnimationFrame(tick);
-}
-
-function draw() {
-  const ctx = canvas?.getContext('2d');
-  if (!ctx || !canvas) return;
-  const g = scene(frame / FPS);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (let y = 0; y < ROWS; y++)
-    for (let x = 0; x < COLS; x++) {
-      const p = g[y][x];
-      ctx.globalAlpha = p ? p[1] : 0.05;
-      ctx.fillStyle = p ? p[0] : C.cm;
-      ctx.fillRect(x * (CELL + GAP), y * (CELL + GAP), CELL, CELL);
-    }
-  ctx.globalAlpha = 1;
 }

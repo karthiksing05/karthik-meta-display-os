@@ -3,6 +3,12 @@
 
 export type SessionStatus = 'starting' | 'running' | 'waiting' | 'idle' | 'done' | 'error' | 'stopped';
 
+/** Tokens in the context window right now, and the window's size. */
+export interface ContextUse {
+  used: number;
+  limit: number;
+}
+
 export interface TranscriptItem {
   at: number;
   role: 'you' | 'claude' | 'tool' | 'system';
@@ -24,7 +30,8 @@ export interface SessionInfo {
   todos: { text: string; done: boolean }[];
   diffStat: { files: number; added: number; removed: number };
   transcript: TranscriptItem[];
-  costUsd: number;
+  /** How full its context window is (tokens), when known. */
+  context: ContextUse | null;
   /**
    * shell = started by the relay (own worktree, full control).
    * external = any other Claude Code session on the relay's machine (terminal, VS Code, Remote Control),

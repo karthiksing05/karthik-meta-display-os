@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ClientMsg, SessionInfo } from '../../shared/protocol.ts';
+import type { ClientMsg, SessionInfo, TranscriptItem } from '../../shared/protocol.ts';
 import { hub, state } from './hub.ts';
 
 /**
@@ -19,7 +19,7 @@ function session(p: Partial<SessionInfo> & Pick<SessionInfo, 'name' | 'repo' | '
     todos: [],
     diffStat: { files: 0, added: 0, removed: 0 },
     transcript: [],
-    costUsd: 0.42,
+    context: { used: 92_000, limit: 200_000 },
     source: 'shell',
     kind: 'code',
     ...p,
@@ -133,9 +133,27 @@ export function startDemo() {
       flaky.progress = 0.3;
     }
     flaky.lastActivity = now();
+    // A scripted stream of steps and messages, so the live feed has something arriving.
+    const beat = SCRIPT[tick++ % SCRIPT.length];
+    flaky.transcript.push({ at: now(), role: beat[0], text: beat[1] });
+    if (beat[0] === 'tool') flaky.activity = beat[1];
+    if (flaky.transcript.length > 30) flaky.transcript.splice(0, flaky.transcript.length - 30);
     hub.changed();
-  }, 5000);
+  }, 2500);
 }
+
+let tick = 0;
+const SCRIPT: [TranscriptItem['role'], string][] = [
+  ['tool', 'Read src/timers.test.ts'],
+  ['tool', 'Edit src/timers.test.ts'],
+  ['tool', 'Run vitest --repeat 20'],
+  ['claude', '20/20 green with fake timers. Checking the second flaky test next.'],
+  ['tool', 'Grep "setTimeout" in src'],
+  ['tool', 'Read src/retry.ts'],
+  ['claude', 'The retry test waits on a real 2 s backoff. Injecting the clock instead.'],
+  ['tool', 'Edit src/retry.ts'],
+  ['tool', 'Run vitest src/retry.test.ts'],
+];
 
 export function demoHandle(msg: ClientMsg) {
   const find = (id: string) => state.sessions.find((s) => s.id === id);

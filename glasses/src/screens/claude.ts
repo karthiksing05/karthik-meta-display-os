@@ -3,6 +3,7 @@ import { store, send, localNotify } from '../store.ts';
 import { C, ago, agoText, bar, btn, esc, footer, header, icon, md, statusColor } from '../ui.ts';
 import { clearComposer, composerBox, composerButtons, mountComposer } from './composer.ts';
 import { on, onEach } from './util.ts';
+import { fresh, phase, prime } from '../fresh.ts';
 import type { Approval, Question, SessionInfo } from '../../../shared/protocol.ts';
 
 // ---------------- Claude hub ----------------
@@ -289,21 +290,15 @@ register('session', {
     const asked = s?.questions.find((q) => q.sessionId === id);
     const ext = x.source === 'external';
     const busy = x.status === 'running' || x.status === 'waiting' || x.status === 'starting';
-    const said = lastClaude(x);
     const phrases = s?.phrases ?? [];
     const replying = open.has(id);
     const diff = x.kind === 'code' && x.diffStat.files ? `<span class="g">+${x.diffStat.added}</span><span class="p">−${x.diffStat.removed}</span><span class="v">${x.diffStat.files}f</span>` : '';
     return `${header(x.name, C.yellow)}
     <main class="scroll">
       <div class="row small"><i class="status" style="background:${statusColor(x.status)}"></i><span style="color:${statusColor(x.status)}">${x.status}</span>
-        <span class="c ellipsis">${esc(x.kind === 'chat' ? 'chat' : x.branch || x.repo)}</span>${tags(x)}<span class="grow"></span>${diff}${x.costUsd ? `<span class="muted">$${x.costUsd.toFixed(2)}</span>` : ''}</div>
+        <span class="c ellipsis">${esc(x.kind === 'chat' ? 'chat' : x.branch || x.repo)}</span>${tags(x)}<span class="grow"></span>${diff}${ctxGauge(x)}</div>
       ${x.progress != null && x.status !== 'stopped' ? bar(x.progress, statusColor(x.status)) : ''}
-      ${busy || !said ? `<div class="small ellipsis" style="color:${x.status === 'waiting' ? C.orange : C.cm}">${esc(x.activity)}</div>` : ''}
-      ${
-        said
-          ? `<button class="item msg" data-f="said"><span class="grow"><span class="label" style="display:block">claude · ${agoText(said.at)} · pinch to read all</span><span class="clamp6" style="display:block">${md(said.text)}</span></span></button>`
-          : ''
-      }
+      ${x.transcript.length ? liveFeed(x, busy) : `<div class="small ellipsis" style="color:${x.status === 'waiting' ? C.orange : C.cm}">${esc(x.activity)}</div>`}
       <div class="btns">
         ${pending ? btn('approve', `approve (${pending})`, { cls: 'primary', icon: 'check', def: true }) : ''}
         ${asked ? btn('answer', 'answer question', { cls: 'primary', icon: 'ask', def: !pending }) : ''}
@@ -345,10 +340,7 @@ register('session', {
       send({ t: 'session.openDesk', id });
       localNotify('opening on your laptop…', 'info');
     });
-    const said = x && lastClaude(x);
-    on(root, 'said', () => {
-      if (x && said) go('message', { title: x.name, role: 'claude', at: said.at, text: said.text });
-    });
+    on(root, 'said', () => go('transcript', { id }));
     mountReply(root, x, id);
     onEach(root, 'ph:', (i) => {
       const p = s?.phrases[Number(i)];
@@ -365,26 +357,75 @@ register('session', {
 // Runs of tool calls are folded into one line. Long messages are cut short here: pinch one to open
 // it in the reader, where up/down scrolls through that message alone and back returns here.
 function foldedRows(x: SessionInfo) {
-  const rows: { role: string; text: string; at: number }[] = [];
+  // k: stable across updates (a run of steps keeps its first step's key while it grows)
+  const rows: { role: string; text: string; at: number; k: string }[] = [];
   for (const t of x.transcript) {
     const prev = rows[rows.length - 1];
     if (t.role === 'tool' && prev?.role === 'tool') {
       prev.text += ` · ${t.text}`;
       prev.at = t.at;
-    } else rows.push({ ...t });
+    } else rows.push({ ...t, k: `${t.at}:${t.role}:${t.text.slice(0, 32)}` });
   }
   return rows.slice(-40);
 }
 const ROLE_CLS: Record<string, string> = { you: 'p', claude: 'c', tool: 'muted', steps: 'muted', system: 'o' };
+const roleColor = (r: string) => ({ you: C.pink, claude: C.cyan, tool: C.green, system: C.orange })[r] ?? C.cm;
+
+/** Context window use: a small bar, the percentage, and the window size (green, orange past 60%, pink past 80%). */
+function ctxGauge(x: SessionInfo) {
+  const c = x.context;
+  if (!c?.limit) return '';
+  const p = Math.min(1, c.used / c.limit);
+  const col = p >= 0.8 ? C.pink : p >= 0.6 ? C.orange : C.green;
+  const k = (n: number) => (n >= 1_000_000 ? `${+(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
+  return `<span class="ctx" title="context"><i style="width:${(p * 100).toFixed(0)}%;background:${col}"></i></span><span style="color:${col}">${Math.round(p * 100)}%</span><span class="muted">of ${k(c.limit)}</span>`;
+}
+
+/**
+ * The session's live feed: the latest messages and steps in a fixed window, newest at the bottom.
+ * New ones grow in and flash, bumping the older ones up and out of the top; while it works, a
+ * typing row shows what it's doing. Pinch for the whole conversation.
+ */
+function liveFeed(x: SessionInfo, busy: boolean) {
+  const rows = foldedRows(x).slice(-10);
+  const scope = `feed:${x.id}`;
+  prime(scope, rows.map((r) => ({ key: r.k, sig: r.text })));
+  const items = rows
+    .map((r) => {
+      const f = fresh(scope, r.k, r.text);
+      const steps = r.role === 'tool' ? r.text.split(' · ') : [];
+      const who = r.role === 'tool' ? `steps <span class="v">${steps.length}</span>` : r.role;
+      const body =
+        r.role === 'tool'
+          ? `<span class="tx ellipsis muted">${esc(steps[steps.length - 1])}</span>`
+          : `<span class="tx clamp${r.role === 'claude' ? 3 : 2}">${esc(r.text.replace(/\s+/g, ' ').slice(0, 400))}</span>`;
+      return `<div class="fi ${f.cls}" style="--fc:${roleColor(r.role)};${f.style}"><span class="who" style="color:${roleColor(r.role)}">${who}</span>${body}</div>`;
+    })
+    .join('');
+  const dot = x.status === 'waiting' ? C.orange : C.green;
+  // The step it's on is already the last line; the typing row then just says it's working.
+  const lastRow = rows[rows.length - 1];
+  const lastStep = lastRow?.role === 'tool' ? lastRow.text.split(' · ').pop() : '';
+  const doing = x.activity && x.activity !== lastStep ? x.activity : x.status === 'waiting' ? 'waiting on you' : 'working…';
+  const typing = busy
+    ? `<div class="fi typing"><span class="who"><i class="dots">${`<b style="background:${dot};${phase(1200)}"></b>`.repeat(3)}</i></span>
+        <span class="tx ellipsis ${x.status === 'waiting' ? 'o' : 'shimmer'}" style="${phase(2400)}">${esc(doing)}</span></div>`
+    : '';
+  return `<button class="feed${busy ? ' live' : ''}" data-f="said">${items}${typing}</button>`;
+}
 
 register('transcript', {
   render({ id }) {
     const x = store.state?.sessions.find((v) => v.id === id);
     if (!x) return `${header('conversation')}<main class="center muted">Session not found.</main>`;
     const replying = open.has(id);
-    const items = foldedRows(x)
+    const rows = foldedRows(x);
+    const scope = `tr:${id}`;
+    prime(scope, rows.map((r) => ({ key: r.k, sig: r.text })));
+    const items = rows
+      .map((r) => ({ r, f: fresh(scope, r.k, r.text) }))
       .map(
-        (r, i, all) => `<button class="item msg" data-f="m:${i}" ${i === all.length - 1 && !replying ? 'data-default' : ''}>
+        ({ r, f }, i, all) => `<button class="item msg ${f.cls}" style="--fc:${roleColor(r.role)};${f.style}" data-f="m:${i}" ${i === all.length - 1 && !replying ? 'data-default' : ''}>
           <span class="grow"><span class="row small"><span class="${ROLE_CLS[r.role] ?? ''}">${r.role === 'tool' ? 'steps' : r.role}</span><span class="grow"></span><span class="muted">${ago(r.at)}</span></span>
           ${r.role === 'tool' ? `<span class="small muted clamp2" style="display:block">${esc(r.text)}</span>` : `<span class="clamp6" style="display:block">${md(r.text)}</span>`}</span>
         </button>`,
@@ -400,6 +441,18 @@ register('transcript', {
     const x = store.state?.sessions.find((v) => v.id === id);
     if (!x) return;
     const rows = foldedRows(x);
+    // Watching the newest message? Follow along as new ones arrive.
+    const last = rows.length - 1;
+    if (root.querySelector(`[data-f="m:${last}"].fx-new`)) {
+      requestAnimationFrame(() => {
+        const a = document.activeElement as HTMLElement | null;
+        if (a?.dataset.f === `m:${last - 1}` || a?.dataset.f === `m:${last}`) {
+          const el = root.querySelector<HTMLElement>(`[data-f="m:${last}"]`);
+          el?.focus({ preventScroll: true });
+          el?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+        }
+      });
+    }
     onEach(root, 'm:', (i) => {
       const r = rows[Number(i)];
       if (!r) return;

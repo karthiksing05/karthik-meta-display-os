@@ -4,7 +4,8 @@ import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { SessionInfo, TranscriptItem } from '../../shared/protocol.ts';
+import type { ContextUse, SessionInfo, TranscriptItem } from '../../shared/protocol.ts';
+import { contextOf } from './context.ts';
 import { claudeEnv, config } from './config.ts';
 import { hub, state } from './hub.ts';
 import { load, save } from './store.ts';
@@ -54,7 +55,8 @@ interface Saved {
   base: string;
   sdkSessionId: string | null;
   startedAt: number;
-  costUsd: number;
+  /** Last known context use (replaces the old costUsd). */
+  context?: ContextUse | null;
   /** code = repo session; chat = one-off with no repo. Missing on sessions saved by older versions (= code). */
   kind?: 'code' | 'chat';
   /** An outside session (terminal / VS Code / Remote Control) the relay continued in place, same session ID. */
@@ -69,6 +71,8 @@ interface Live {
   inbox: Inbox | null;
   q: Query | null;
   abort: AbortController | null;
+  /** The model's real context window, once a result has reported it. */
+  ctxWindow?: number;
 }
 
 const live = new Map<string, Live>();
@@ -192,7 +196,7 @@ export function restoreSessions() {
       info: {
         id: s.id, name: s.name, repo: s.repo, branch: s.branch, status: 'stopped', source: 'shell', cwd: s.worktree, kind: s.kind ?? 'code', notes: s.notes,
         startedAt: s.startedAt, lastActivity: s.startedAt, activity: 'stopped · send a message to resume',
-        progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], costUsd: s.costUsd,
+        progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], context: s.context ?? null,
       },
     });
   }
@@ -208,7 +212,7 @@ export async function startSession(repo: string, prompt: string, name?: string, 
   let branch = '', worktree: string, base = '';
   if (kind === 'code') ({ branch, worktree, base } = await makeWorktree(repo, title, id));
   else fs.mkdirSync((worktree = notes ? notesDir : path.join(config.chatsDir, `${slug(title)}-${id.slice(0, 4)}`)), { recursive: true });
-  const saved: Saved = { id, name: title, repo: notes ? 'notes' : repo || 'chat', branch, worktree, base, sdkSessionId: null, startedAt: Date.now(), costUsd: 0, kind, ...(notes ? { notes } : {}) };
+  const saved: Saved = { id, name: title, repo: notes ? 'notes' : repo || 'chat', branch, worktree, base, sdkSessionId: null, startedAt: Date.now(), kind, ...(notes ? { notes } : {}) };
   const l: Live = {
     saved,
     inbox: null,
@@ -216,7 +220,7 @@ export async function startSession(repo: string, prompt: string, name?: string, 
     abort: null,
     info: {
       id, name: title, repo: saved.repo, branch, status: 'starting', source: 'shell', cwd: worktree, kind, notes: notes || undefined, startedAt: saved.startedAt, lastActivity: Date.now(),
-      activity: 'starting', progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], costUsd: 0,
+      activity: 'starting', progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], context: null,
     },
   };
   live.set(id, l);
@@ -295,6 +299,7 @@ function handle(l: Live, msg: SDKMessage) {
       break;
     case 'assistant': {
       l.info.status = 'running';
+      if (!msg.parent_tool_use_id) l.info.context = contextOf(msg.message.usage, config.claudeModel ?? msg.message.model, l.ctxWindow) ?? l.info.context;
       for (const block of msg.message.content as Array<{ type: string; text?: string; name?: string; input?: any }>) {
         if (block.type === 'text' && block.text) {
           log(l, 'claude', block.text);
@@ -313,8 +318,11 @@ function handle(l: Live, msg: SDKMessage) {
       break;
     }
     case 'result': {
-      l.info.costUsd = msg.total_cost_usd ?? l.info.costUsd;
-      l.saved.costUsd = l.info.costUsd;
+      // The real window size, once the SDK reports it.
+      const win = Math.max(0, ...Object.values((msg as any).modelUsage ?? {}).map((u: any) => u?.contextWindow ?? 0));
+      if (win && l.info.context) l.info.context = { ...l.info.context, limit: win };
+      l.ctxWindow = win || l.ctxWindow;
+      l.saved.context = l.info.context;
       const failed = msg.subtype !== 'success' || msg.is_error;
       l.info.status = failed ? 'error' : 'idle';
       l.info.activity = !failed
@@ -575,7 +583,7 @@ export function continueExternal(ext: SessionInfo, text: string): string {
   const id = ext.id; // the Claude session ID
   const saved: Saved = {
     id, name: ext.name, repo: ext.repo, branch: ext.branch, worktree: ext.cwd ?? '', base: '',
-    sdkSessionId: id, startedAt: ext.startedAt, costUsd: ext.costUsd, kind: ext.kind, adopted: true,
+    sdkSessionId: id, startedAt: ext.startedAt, context: ext.context, kind: ext.kind, adopted: true,
   };
   const l: Live = {
     saved, inbox: null, q: null, abort: null,

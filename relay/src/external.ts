@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { deleteSession, getSessionMessages, listSessions } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionInfo, TranscriptItem } from '../../shared/protocol.ts';
+import { contextFromFile, contextFromMessages } from './context.ts';
 import { config } from './config.ts';
 import { hub, state } from './hub.ts';
 import { previewFor, ruleFor, titleFor } from './approvals.ts';
@@ -72,7 +73,7 @@ function upsert(sdkId: string, cwd: string, patch: Partial<SessionInfo> = {}): E
         id: sdkId, name: repoLabel(cwd), repo: repoLabel(cwd), branch: '', status: 'idle',
         source: 'external', cwd, kind: under(config.chatsDir, cwd) ? 'chat' : 'code',
         startedAt: Date.now(), lastActivity: Date.now(), activity: '',
-        progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], costUsd: 0,
+        progress: null, todos: [], diffStat: { files: 0, added: 0, removed: 0 }, transcript: [], context: null,
       },
     };
     ext.set(sdkId, e);
@@ -105,6 +106,7 @@ function textOf(message: unknown): { text: string; tools: string[] } {
 async function loadTranscript(e: Ext) {
   try {
     const msgs = await getSessionMessages(e.info.id, { dir: e.info.cwd });
+    e.info.context = contextFromMessages(msgs) ?? e.info.context;
     const items: TranscriptItem[] = [];
     for (const m of msgs.slice(-60)) {
       if (m.parent_tool_use_id) continue; // subagent chatter
@@ -164,6 +166,7 @@ interface HookIn {
   message?: string;
   notification_type?: string;
   last_assistant_message?: string;
+  transcript_path?: string;
   stop_hook_active?: boolean;
   source?: string;
   reason?: string;
@@ -224,6 +227,7 @@ export async function handleHook(h: HookIn): Promise<object> {
         return {};
 
       case 'Stop': {
+        e.info.context = contextFromFile(h.transcript_path) ?? e.info.context;
         if (h.last_assistant_message) {
           log(e, 'claude', h.last_assistant_message);
           e.info.activity = firstLine(h.last_assistant_message);

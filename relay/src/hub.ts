@@ -10,7 +10,6 @@ import { lockEnabled } from './lock.ts';
 const defaultSettings: Settings = {
   approvals: 'balanced',
   background: 'gray',
-  dictationCleanup: true,
   syncToLaptop: true,
   learnedRules: [],
 };

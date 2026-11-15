@@ -73,7 +73,6 @@ export type ApprovalPreset = 'careful' | 'balanced' | 'trusting' | 'everything';
 export interface Settings {
   approvals: ApprovalPreset;
   background: 'gray' | 'black';
-  dictationCleanup: boolean;
   /** After the glasses finish a turn on a laptop session, reopen it there so it shows everything. */
   syncToLaptop: boolean;
   learnedRules: string[];

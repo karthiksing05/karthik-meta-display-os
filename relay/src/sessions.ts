@@ -442,12 +442,17 @@ async function letGo(l: Live) {
 /**
  * The glasses just finished a turn on a session from your laptop. A window that's already open there
  * can't refresh, so: if it isn't open, open it (it loads fresh with every turn); if it is, say it's
- * out of date. Waits a little first, so a quick follow-up from the glasses doesn't bounce around.
+ * out of date.
+ *
+ * It waits until you've stopped iterating: only after SYNC_QUIET_MS with no new turn. Each finished
+ * turn schedules this again and the older call gives up (the transcript grew), so going back and
+ * forth from the glasses never opens a laptop tab mid-conversation, which would then be stale.
  */
+const SYNC_QUIET_MS = 90_000;
 async function syncToLaptop(l: Live) {
   if (!state.settings.syncToLaptop || config.demo) return;
   const turns = l.info.transcript.length;
-  await sleep(15_000);
+  await sleep(SYNC_QUIET_MS);
   if (live.get(l.info.id) !== l || l.info.status !== 'idle' || l.info.transcript.length !== turns) return;
   const d = deskOf(l.info.id);
   if (d) {

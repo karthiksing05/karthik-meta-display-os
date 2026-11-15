@@ -2,35 +2,33 @@ import { store, clean } from '../store.ts';
 import { btn, esc } from '../ui.ts';
 
 /**
- * A text box that lives on the current screen (no separate page). Focusing the box opens the
- * glasses' own text input (dictation, handwriting, keyboard); when you finish, the relay cleans the
- * text and you send the clean or the spoken version. One box per `key` (= the textarea's data-f),
- * so give the button that opens it the same key and focus lands straight in the box.
+ * A text box that lives on the current screen (no separate page), opened in one of two modes:
+ *
+ *  - dictate: you speak; the relay always cleans it FreeFlow-style (Groq: filler words out,
+ *    self-corrections applied, code terms formatted). You send the cleaned text, or "as spoken".
+ *  - handwrite: you write (or type); it's sent exactly as written, no cleanup.
+ *
+ * Either button opens the box and puts you straight into the glasses' own text input. One box per
+ * `key` (= the textarea's data-f).
  */
-const drafts = new Map<string, { raw: string; cleaned: string; busy: boolean; dictate?: boolean }>();
-const draft = (key: string) => drafts.get(key) ?? (drafts.set(key, { raw: '', cleaned: '', busy: false }), drafts.get(key)!);
+export type Mode = 'dictate' | 'write';
+const drafts = new Map<string, { raw: string; cleaned: string; busy: boolean; mode: Mode }>();
+const draft = (key: string) => drafts.get(key) ?? (drafts.set(key, { raw: '', cleaned: '', busy: false, mode: 'dictate' }), drafts.get(key)!);
 
-/**
- * The "dictate" button: open the box for `key` (via `open`), always clean the result FreeFlow-style
- * (whatever the dictation cleanup setting says), and put you straight into the glasses' text input
- * instead of waiting for a pinch on the box.
- */
-export function startDictation(key: string, open: () => void) {
-  draft(key).dictate = true;
-  open();
-  requestAnimationFrame(() => {
-    const ta = document.querySelector<HTMLTextAreaElement>(`textarea[data-f="${CSS.escape(key)}"]`);
-    if (!ta) return;
-    ta.focus();
-    ta.click(); // the glasses open their composer on a pinch (click) on a text box
-  });
+/** The two buttons that open the box: dictate (default) and handwrite. */
+export function composerButtons(key: string, opts: { def?: boolean; dictate?: string; write?: string } = {}) {
+  return (
+    btn(`${key}:dictate`, opts.dictate ?? 'dictate', { icon: 'mic', def: opts.def, cls: 'primary' }) +
+    btn(`${key}:write`, opts.write ?? 'handwrite', { icon: 'pen' })
+  );
 }
 
-export function composerBox(key: string, placeholder = 'pinch here, then dictate or handwrite') {
+export function composerBox(key: string, to?: string) {
   const d = draft(key);
-  const showClean = d.cleaned && d.cleaned !== d.raw;
+  const showClean = d.mode === 'dictate' && d.cleaned && d.cleaned !== d.raw;
+  const hint = d.mode === 'dictate' ? `pinch, then speak${to ? ` to ${to}` : ''} · cleaned for you` : `pinch, then write${to ? ` to ${to}` : ''} · sent as written`;
   return `<div class="inline-compose col">
-    <textarea data-f="${esc(key)}" data-default placeholder="${esc(placeholder)}">${esc(d.raw)}</textarea>
+    <textarea data-f="${esc(key)}" data-default placeholder="${esc(hint)}">${esc(d.raw)}</textarea>
     ${showClean ? `<div class="card"><div class="label">cleaned</div><div>${esc(d.cleaned)}</div></div>` : d.busy ? '<div class="muted small">cleaning…</div>' : ''}
     <div class="btns">
       ${btn(`${key}:send`, 'send', { icon: 'send', cls: 'primary' })}
@@ -44,15 +42,42 @@ export function clearComposer(key: string) {
   drafts.delete(key);
 }
 
-/** Wire the box. `deliver` gets the text to send; `close` hides the box (send and cancel both call it). */
-export function mountComposer(root: HTMLElement, key: string, deliver: (text: string) => void, close: () => void) {
+/** Put the focus in the box and open the glasses' text input (they open it on a pinch = click). */
+function enterBox(key: string) {
+  requestAnimationFrame(() => {
+    const ta = document.querySelector<HTMLTextAreaElement>(`textarea[data-f="${CSS.escape(key)}"]`);
+    if (!ta) return;
+    ta.focus();
+    ta.click();
+  });
+}
+
+/**
+ * Wire the buttons and the box. `open` shows the box, `close` hides it (send and cancel both call it),
+ * `deliver` gets the text to send.
+ */
+export function mountComposer(root: HTMLElement, key: string, deliver: (text: string) => void, open: () => void, close: () => void) {
+  const bind = (k: string, fn: () => void) => {
+    const el = root.querySelector<HTMLElement>(`[data-f="${CSS.escape(k)}"]`);
+    if (el) el.onclick = fn;
+  };
+  const start = (mode: Mode) => () => {
+    const d = draft(key);
+    d.mode = mode;
+    d.cleaned = '';
+    open();
+    enterBox(key);
+  };
+  bind(`${key}:dictate`, start('dictate'));
+  bind(`${key}:write`, start('write'));
+
   const ta = root.querySelector<HTMLTextAreaElement>(`textarea[data-f="${CSS.escape(key)}"]`);
   if (!ta) return;
   const d = draft(key);
   const finish = async () => {
     d.raw = ta.value;
     if (!d.raw.trim()) return;
-    if (d.dictate || (store.state?.settings.dictationCleanup ?? true)) {
+    if (d.mode === 'dictate') {
       d.busy = true;
       store.emit();
       const ctx = (store.state?.sessions ?? []).map((s) => `${s.name} (${s.repo})`).join(', ');
@@ -76,10 +101,6 @@ export function mountComposer(root: HTMLElement, key: string, deliver: (text: st
     drafts.delete(key);
     deliver(text.trim());
     close();
-  };
-  const bind = (k: string, fn: () => void) => {
-    const el = root.querySelector<HTMLElement>(`[data-f="${CSS.escape(k)}"]`);
-    if (el) el.onclick = fn;
   };
   bind(`${key}:send`, () => fire(d.cleaned || ta.value));
   bind(`${key}:raw`, () => fire(d.raw || ta.value));

@@ -56,6 +56,7 @@ const P: Record<string, string> = {
   prev: '<path d="M19 5v14L9 12zM7 5v14"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   minus: '<path d="M5 12h14"/>',
+  pen: '<path d="M4 20l4.5-1L19 8.5 15.5 5 5 15.5z"/><path d="m13.5 7 3.5 3.5"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
   check: '<path d="m4 12 5 5L20 6"/>',
   x: '<path d="M6 6l12 12M18 6 6 18"/>',

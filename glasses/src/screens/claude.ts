@@ -1,7 +1,7 @@
 import { register, go, back, replace } from '../nav.ts';
 import { store, send, localNotify } from '../store.ts';
 import { C, ago, agoText, bar, btn, esc, footer, header, icon, md, statusColor } from '../ui.ts';
-import { clearComposer, composerBox, mountComposer, startDictation } from './composer.ts';
+import { clearComposer, composerBox, composerButtons, mountComposer } from './composer.ts';
 import { on, onEach } from './util.ts';
 import type { Approval, Question, SessionInfo } from '../../../shared/protocol.ts';
 
@@ -63,11 +63,10 @@ register('claude', {
       ${qCard}
       ${
         open.has('ask')
-          ? `<div class="label">ask ${esc(targetName)}</div>${composerBox('ask')}`
-          : `<div class="row">
-        ${btn('ask', `ask ${esc(targetName)}…`, { icon: 'ask', cls: 'grow wide' })}
-        ${btn('askDictate', 'dictate', { icon: 'mic', cls: 'chip' })}
-        ${btn('target', '▾', { cls: 'chip' })}
+          ? `<div class="label">ask ${esc(targetName)}</div>${composerBox('ask', targetName)}`
+          : `<div class="label">ask ${esc(targetName)}</div><div class="btns">
+        ${composerButtons('ask')}
+        ${btn('target', 'who ▾', { cls: 'chip' })}
       </div>`
       }
       <div class="label">quick send → ${esc(targetName)}</div>
@@ -96,8 +95,6 @@ register('claude', {
       askTarget = ids[(ids.indexOf(askTarget) + 1) % ids.length] ?? 'all';
       store.emit();
     });
-    on(root, 'ask', () => toggle('ask', true));
-    on(root, 'askDictate', () => startDictation('ask', () => toggle('ask', true)));
     mountComposer(
       root,
       'ask',
@@ -105,6 +102,7 @@ register('claude', {
         send({ t: 'ask', target: askTarget, text });
         localNotify(`sent → ${targetName()}`);
       },
+      () => toggle('ask', true),
       () => toggle('ask', false),
     );
     onEach(root, 'ph:', (i) => {
@@ -241,14 +239,12 @@ register('sessions', {
 // phrases. Then todos and controls.
 const lastClaude = (x: SessionInfo) => [...x.transcript].reverse().find((t) => t.role === 'claude');
 
-/** Reply button, or the reply box in its place once opened (same data-f key → focus lands in it). */
+/** Dictate / handwrite buttons, or the reply box in their place once opened. */
 function replyBox(x: SessionInfo, label: string, def = false) {
-  if (open.has(x.id)) return composerBox('reply', `reply to ${x.name}: pinch, then dictate or handwrite`);
-  return btn('reply', label, { icon: 'comms', def }) + btn('dictate', 'dictate', { icon: 'mic' });
+  if (open.has(x.id)) return composerBox('reply', x.name);
+  return composerButtons('reply', { def, dictate: label || 'dictate' });
 }
 function mountReply(root: HTMLElement, x: SessionInfo | undefined, id: string) {
-  on(root, 'reply', () => toggle(id, true));
-  on(root, 'dictate', () => startDictation('reply', () => toggle(id, true)));
   mountComposer(
     root,
     'reply',
@@ -256,6 +252,7 @@ function mountReply(root: HTMLElement, x: SessionInfo | undefined, id: string) {
       send({ t: 'session.send', id, text });
       localNotify(`sent → ${x?.name ?? 'session'}`);
     },
+    () => toggle(id, true),
     () => toggle(id, false),
   );
 }
@@ -288,7 +285,7 @@ register('session', {
       <div class="btns">
         ${pending ? btn('approve', `approve (${pending})`, { cls: 'primary', icon: 'check', def: true }) : ''}
         ${asked ? btn('answer', 'answer question', { cls: 'primary', icon: 'ask', def: !pending }) : ''}
-        ${replying ? '' : replyBox(x, ext && busy ? 'reply · after this step' : 'reply', !pending && !asked)}
+        ${replying ? '' : replyBox(x, ext && busy ? 'dictate · after this step' : 'dictate', !pending && !asked)}
         ${btn('history', 'conversation', { icon: 'comms' })}
         ${busy ? '' : btn('desk', x.desk ? `${x.desk === 'vscode' ? 'vs code' : 'terminal'} ↗` : 'open on laptop', { icon: 'laptop' })}
       </div>
@@ -312,7 +309,7 @@ register('session', {
         ${!ext && busy ? btn('stop', 'stop', { icon: 'stop' }) : ''}
       </div>
     </main>
-    ${footer(replying ? 'pinch the box to talk · back closes it' : ext && busy ? 'running elsewhere · replies are delivered when it finishes this step' : 'pinch a phrase to send it · dictate to talk')}`;
+    ${footer(replying ? 'pinch the box to talk · back closes it' : ext && busy ? 'running elsewhere · replies are delivered when it finishes this step' : 'pinch a phrase to send it · or dictate / handwrite')}`;
   },
   key: (e, { id }) => closeReplyKey(e, id),
   mount(root, { id }) {
@@ -373,7 +370,7 @@ register('transcript', {
       .join('');
     return `${header(x.name, C.yellow)}
     <main class="scroll"><div class="list">${items || '<div class="muted center">Nothing yet.</div>'}</div>
-      ${replyBox(x, 'reply')}</main>
+      ${replyBox(x, 'dictate')}</main>
     ${footer(replying ? 'pinch the box to talk · back closes it' : 'swipe ↑ for older · pinch a message to read it all')}`;
   },
   key: (e, { id }) => closeReplyKey(e, id),

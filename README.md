@@ -118,10 +118,10 @@ browser with fake sessions. Arrow keys = swipes, Enter = pinch, Esc = back.
 <tr>
 <td align="center"><img src="docs/images/approval.png" width="260"><br><b>approve</b>: → approve, ← deny, ↓ always allow this kind</td>
 <td align="center"><img src="docs/images/reader.png" width="260"><br><b>read</b>: pinch a message to read all of it; swipe scrolls, back returns</td>
-<td align="center"><img src="docs/images/reply.png" width="260"><br><b>reply</b>: the box opens in place; dictate, handwrite or type</td>
+<td align="center"><img src="docs/images/reply.png" width="260"><br><b>reply</b>: <i>dictate</i> (cleaned FreeFlow-style) or <i>handwrite</i> (sent as written); the box opens in place</td>
 </tr>
 <tr>
-<td align="center"><img src="docs/images/settings.png" width="260"><br><b>settings</b>: approval preset, laptop sync, background, Mac battery and Wi-Fi</td>
+<td align="center"><img src="docs/images/settings.png" width="260"><br><b>settings</b>: your Mac's battery and Wi-Fi, what's connected, laptop sync, background</td>
 <td align="center"><img src="docs/images/twofa.png" width="260"><br><b>2fa</b>: codes after your pattern; back locks them</td>
 <td align="center"><img src="docs/images/lock.png" width="260"><br><b>lock</b>: nothing shows until you unlock</td>
 </tr>
@@ -134,7 +134,7 @@ browser with fake sessions. Arrow keys = swipes, Enter = pinch, Esc = back.
 is done, ClaudeProd reopens that session in VS Code (or your terminal), so it shows every turn. A
 VS Code tab that's already open can't refresh itself, so the lens tells you when one is out of date.
 
-**Approvals** follow a preset (settings → approvals): *careful*, *balanced* (default), *trusting*,
+**Approvals** follow a preset, `approvals` in `~/.claude-shell/data/settings.json` (restart the relay after editing): *careful*, *balanced* (default), *trusting*,
 or *everything* (auto-approve all). Risky commands (`rm -rf`, `git push`, `sudo`, …) always ask,
 except under *everything*.
 

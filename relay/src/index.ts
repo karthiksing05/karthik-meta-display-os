@@ -220,7 +220,7 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       return reply(ws, {
         t: 'dictation.cleaned',
         reqId: msg.reqId,
-        text: state.settings.dictationCleanup ? await cleanDictation(msg.text, msg.context) : msg.text,
+        text: await cleanDictation(msg.text, msg.context), // only dictated text is sent here
       });
     case 'settings.set':
       Object.assign(state.settings, msg.patch);

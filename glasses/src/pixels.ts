@@ -1,7 +1,8 @@
 import { C } from './ui.ts';
 
 /**
- * Pixel band on the home screen: mountains at sunset, seen from a slowly moving train.
+ * Pixel band on the home screen: mountains at sunset, seen from a slowly moving train, with a river
+ * rushing along the bottom (white and grey foam, the odd rainbow fleck).
  *
  * The scenery is pixel art (a 144×34 grid of 3 px dots), but it moves smoothly: each range is drawn
  * once into its own strip and slid sideways by fractional pixels, the near foothills fastest and the
@@ -43,10 +44,16 @@ const ranges: { peaks: Peak[]; period: number; speed: number; color: string; edg
   // middle
   { peaks: [[3, 7, 0.5], [15, 6, 0.45], [53, 6, 0.4], [72, 7, 0.5]], period: 84, speed: 0.9, color: C.cyan, edge: 0.8, fill: 0.32, seed: 40 },
   // near foothills
-  { peaks: [[10, 12, 0.2], [37, 11, 0.15], [62, 12, 0.25]], period: 72, speed: 2, color: C.green, edge: 0.85, fill: 0.36, seed: 90 },
+  { peaks: [[10, 9.8, 0.2], [37, 9.2, 0.15], [62, 9.8, 0.22]], period: 72, speed: 2, color: C.green, edge: 0.85, fill: 0.36, seed: 90 },
 ];
 
 const SUN = { x: 33, y: 6.5, r: 4 };
+
+/** The river along the bottom: rows of foam, each rushing left at its own speed (px/s, fastest mid-stream). */
+const RIVER_SPEEDS = [55, 80, 110, 95, 70];
+const RIVER_TOP = ROWS - RIVER_SPEEDS.length;
+const RIVER_CELLS = 256; // one strip repeats every this many cells
+const RAINBOW = [C.pink, C.orange, C.yellow, C.green, C.cyan, C.purple];
 const STARS = [[4, 1], [15, 0.4], [21, 2], [29, 1], [38, 3], [49, 0.3], [55, 1.2], [62, 2], [1, 4], [61, 5], [10, 3], [44, 2], [25, 3.6], [57, 3.4]];
 
 const dot = (ctx: CanvasRenderingContext2D, gx: number, gy: number, color: string, alpha: number) => {
@@ -104,7 +111,46 @@ function drawSun() {
   return c;
 }
 
+/** One row of river as pixel art: streaks of white and grey foam, dark water between, rare rainbow flecks. */
+function drawRiverRow(row: number) {
+  const c = document.createElement('canvas');
+  c.width = RIVER_CELLS * PITCH;
+  c.height = DOT;
+  const ctx = c.getContext('2d')!;
+  let x = 0;
+  let n = row * 1000;
+  const rnd = () => hash(++n);
+  while (x < RIVER_CELLS) {
+    // a streak of foam…
+    const len = 2 + Math.floor(rnd() * 7);
+    const tone = rnd();
+    for (let k = 0; k < len && x < RIVER_CELLS; k++, x++) {
+      const fleck = rnd() < 0.035;
+      const [color, alpha] = fleck
+        ? [RAINBOW[Math.floor(rnd() * RAINBOW.length)], 0.95]
+        : tone < 0.4
+          ? [C.fg, 0.9 - k * 0.06] // bright white, thinning toward its tail
+          : tone < 0.75
+            ? [C.fg, 0.5]
+            : [C.cm, 0.55];
+      ctx.globalAlpha = Math.max(0.25, alpha);
+      ctx.fillStyle = color;
+      ctx.fillRect(x * PITCH, 0, DOT, DOT);
+    }
+    // …then a little dark water
+    const gap = 1 + Math.floor(rnd() * 4);
+    for (let k = 0; k < gap && x < RIVER_CELLS; k++, x++) {
+      if (rnd() < 0.5) continue;
+      ctx.globalAlpha = 0.16;
+      ctx.fillStyle = C.cm;
+      ctx.fillRect(x * PITCH, 0, DOT, DOT);
+    }
+  }
+  return c;
+}
+
 let canvas: HTMLCanvasElement | null = null;
+let river: HTMLCanvasElement[] = [];
 let layers: ReturnType<typeof drawRange>[] = [];
 let sun: HTMLCanvasElement | null = null;
 let sunNow: HTMLCanvasElement | null = null;
@@ -154,7 +200,16 @@ function draw() {
       ctx.drawImage(L.art, x, 0);
     }
   });
+
+  // The river, in front of everything.
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillRect(0, RIVER_TOP * PITCH, W, H);
   ctx.globalCompositeOperation = 'source-over';
+  river.forEach((strip, i) => {
+    const off = (t * RIVER_SPEEDS[i]) % strip.width;
+    for (const x of [-off, strip.width - off]) if (x < W) ctx.drawImage(strip, x, (RIVER_TOP + i) * PITCH);
+  });
 }
 
 export function attachPixels(el: HTMLCanvasElement) {
@@ -164,6 +219,7 @@ export function attachPixels(el: HTMLCanvasElement) {
   if (!layers.length) {
     layers = ranges.map(drawRange);
     sun = drawSun();
+    river = RIVER_SPEEDS.map((_, i) => drawRiverRow(i));
     sunNow = document.createElement('canvas');
     sunNow.width = W;
     sunNow.height = H;

@@ -35,7 +35,7 @@ register('home', {
         ${tile('sessions', 'sessions', C.yellow, 'sessions', `<span class="v">${sessions.length}</span> · ${sessions.filter((x) => x.source === 'external').length} outside`)}
         ${tile('newSession', 'plus', C.green, 'new', 'pick a repo, dictate')}
         ${tile('twofa', 'key', C.purple, '2fa', s?.integrations.totp || s?.integrations.demo ? 'locked · swipe to open' : 'not set up')}
-        ${tile('settings', 'gear', C.purple, 'settings', `approvals: ${s?.settings.approvals ?? '—'}<br>${store.connected ? 'relay ok' : '<span class="p">relay offline</span>'}`)}
+        ${tile('settings', 'gear', C.purple, 'settings', `mac ${s?.host.battery ?? '—'}%${s?.host.charging ? ' ⚡' : ''} · ${s?.host.wifi === 'connected' ? 'wi-fi' : '<span class="o">no wi-fi</span>'}<br>${store.connected ? 'relay ok' : '<span class="p">relay offline</span>'}`)}
       </div>
     </main>
     ${footer('swipe to move · pinch to open')}`;

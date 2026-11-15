@@ -76,8 +76,8 @@ An open VS Code tab or terminal never re-reads its conversation from disk, so it
 glasses added. The relay (`relay/src/desk.ts`) watches which sessions are open on the Mac (each VS Code
 Claude tab runs `claude --resume=<id>`; the hooks report the rest), and:
 
-- after the glasses finish a turn on a laptop session that **isn't** open there, it waits 15 s, lets go
-  of the session and opens it in VS Code (`vscode://anthropic.claude-code/open?session=<id>`) or
+- after the glasses finish a turn on a laptop session that **isn't** open there, it waits until you've
+  stopped iterating (90 s with no new turn from the glasses), lets go of the session and opens it in VS Code (`vscode://anthropic.claude-code/open?session=<id>`) or
   Terminal, freshly loaded. Turn this off with **settings → laptop sync** on the lens.
 - if a tab **is** open, it's out of date: the lens says so. Close it, then **open on laptop**.
 - **open on laptop** on a session screen does the same on demand.

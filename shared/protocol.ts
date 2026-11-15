@@ -109,6 +109,10 @@ export interface Integrations {
   appLock: boolean;
   /** Spotify signed in (once, at {PUBLIC_URL}/spotify/login?k=<SHELL_TOKEN>). */
   spotify: boolean;
+  /** The Spotify sign-in allows playing on the glasses themselves (has the `streaming` permission). */
+  spotifyPlayer?: boolean;
+  /** The glasses' own Spotify player is connected right now. */
+  spotifyLens?: boolean;
   demo: boolean;
 }
 
@@ -180,7 +184,9 @@ export type ClientMsg =
   | { t: 'ask'; target: 'all' | string; text: string }
   | { t: 'status.check' }
   | { t: 'dictation.clean'; reqId: string; text: string; context?: string }
-  | { t: 'spotify'; action: 'play' | 'pause' | 'next' | 'prev' | 'volume' | 'playUri'; value?: number | string }
+  | { t: 'spotify'; action: 'play' | 'pause' | 'next' | 'prev' | 'volume' | 'playUri' | 'here'; value?: number | string }
+  | { t: 'spotify.token'; reqId: string }
+  | { t: 'spotify.device'; id: string | null }
   | { t: 'settings.set'; patch: Partial<Settings> }
   | { t: 'rules.clear' }
   /** 2FA: unlock with the swipe pattern; codes go only to this connection. */
@@ -202,6 +208,7 @@ export type ServerMsg =
   | { t: 'totp.codes'; codes: TotpCode[]; unlockedUntil: number }
   | { t: 'totp.locked'; reason?: string; triesLeft?: number }
   | { t: 'dictation.cleaned'; reqId: string; text: string }
+  | { t: 'spotify.token'; reqId: string; token: string | null }
   | { t: 'notify'; text: string; level: 'info' | 'good' | 'warn' | 'error'; sessionId?: string }
   | { t: 'card'; sessionId: string; title: string; body: string }
   | { t: 'error'; text: string };

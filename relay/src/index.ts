@@ -19,9 +19,12 @@ import { handleHook, seedExternal } from './external.ts';
 import { notePid, startDeskWatch } from './desk.ts';
 import { issuePass, lockMethod, passOk, tryAppUnlock } from './lock.ts';
 import { codes, totpEnabled, tryUnlock, vaultNow, type TotpAccount } from './totp.ts';
-import { loadPicks, pollSpotify, spotifyAction, spotifyCallback, spotifyConfigured, spotifyLogin } from './spotify.ts';
+import { loadPicks, pollSpotify, setLensDevice, spotifyAction, spotifyCallback, spotifyConfigured, spotifyLogin, spotifyPlayerToken } from './spotify.ts';
 
 // ---------- auth ----------
+/** The connection whose app runs the glasses' Spotify player (its device goes away with it). */
+let lensPlayerWs: WebSocket | null = null;
+
 function tokenOk(t: string | null | undefined): boolean {
   if (!t) return false;
   const a = Buffer.from(t);
@@ -168,6 +171,10 @@ wss.on('connection', (ws: WebSocket, unlockedAtStart: boolean) => {
     ws.ping();
   }, 25_000);
   ws.on('close', () => {
+    if (lensPlayerWs === ws) {
+      lensPlayerWs = null;
+      setLensDevice(null);
+    }
     clearInterval(ping);
     hub.remove(ws);
   });
@@ -231,6 +238,12 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       return reply(ws, { t: 'totp.locked' });
     case 'spotify':
       return config.demo ? undefined : spotifyAction(msg.action, msg.value);
+    case 'spotify.token':
+      return reply(ws, { t: 'spotify.token', reqId: msg.reqId, token: config.demo ? null : await spotifyPlayerToken() });
+    case 'spotify.device':
+      if (config.demo) return;
+      lensPlayerWs = msg.id ? ws : null;
+      return setLensDevice(msg.id);
     case 'dictation.clean':
       return reply(ws, {
         t: 'dictation.cleaned',

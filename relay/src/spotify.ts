@@ -15,12 +15,18 @@ const SCOPES = [
   'user-read-currently-playing',
   'user-read-recently-played',
   'playlist-read-private',
+  // The glasses as a Spotify player (Web Playback SDK): music plays from the glasses themselves.
+  'streaming',
+  'user-read-email',
+  'user-read-private',
 ].join(' ');
 
 interface Tokens {
   refresh: string;
   access?: string;
   expires?: number;
+  /** What was granted; older sign-ins lack `streaming` and need one more sign-in to play on the glasses. */
+  scope?: string;
 }
 let tokens = load<Tokens | null>('spotify', null);
 
@@ -69,9 +75,10 @@ export async function spotifyCallback(url: URL, res: ServerResponse) {
     code: url.searchParams.get('code') ?? '',
     redirect_uri: config.spotifyRedirect,
   });
-  tokens = { refresh: t.refresh_token, access: t.access_token, expires: Date.now() + t.expires_in * 1000 };
+  tokens = { refresh: t.refresh_token, access: t.access_token, expires: Date.now() + t.expires_in * 1000, scope: t.scope };
   save('spotify', tokens);
   state.integrations.spotify = true;
+  state.integrations.spotifyPlayer = canStream();
   hub.changed();
   res.writeHead(200, { 'content-type': 'text/html' }).end('<h2>Spotify connected.</h2><p>You can close this tab.</p>');
 }
@@ -86,16 +93,33 @@ async function tokenRequest(body: Record<string, string>) {
     body: new URLSearchParams(body),
   });
   if (!res.ok) throw new Error(`spotify token ${res.status}: ${await res.text()}`);
-  return (await res.json()) as { access_token: string; refresh_token: string; expires_in: number };
+  return (await res.json()) as { access_token: string; refresh_token: string; expires_in: number; scope?: string };
 }
 
 async function access(): Promise<string | null> {
   if (!tokens) return null;
   if (tokens.access && tokens.expires && tokens.expires > Date.now() + 30_000) return tokens.access;
   const t = await tokenRequest({ grant_type: 'refresh_token', refresh_token: tokens.refresh });
-  tokens = { refresh: t.refresh_token || tokens.refresh, access: t.access_token, expires: Date.now() + t.expires_in * 1000 };
+  tokens = { refresh: t.refresh_token || tokens.refresh, access: t.access_token, expires: Date.now() + t.expires_in * 1000, scope: t.scope ?? tokens.scope };
   save('spotify', tokens);
+  state.integrations.spotifyPlayer = canStream();
   return tokens.access!;
+}
+
+const canStream = () => Boolean(tokens?.scope?.split(' ').includes('streaming'));
+
+/** A short-lived access token for the player on the glasses (sent only to unlocked lenses). */
+export async function spotifyPlayerToken(): Promise<string | null> {
+  if (!canStream()) return null;
+  return access().catch(() => null);
+}
+
+/** The glasses' own Spotify player, once it's connected (null when the app is closed). */
+let lensDevice: string | null = null;
+export function setLensDevice(id: string | null) {
+  lensDevice = id;
+  state.integrations.spotifyLens = Boolean(id);
+  hub.changed();
 }
 
 export async function api(method: string, path: string, body?: unknown) {
@@ -115,6 +139,7 @@ export async function api(method: string, path: string, body?: unknown) {
 export async function pollSpotify() {
   if (!tokens) return;
   state.integrations.spotify = true;
+  state.integrations.spotifyPlayer = canStream();
   try {
     const p = await api('GET', '/me/player');
     const item = p?.item;
@@ -173,6 +198,7 @@ function pickArt(images?: { url: string; width: number }[]): string | null {
  */
 async function deviceParam(): Promise<string> {
   if (state.track?.device) return '';
+  if (lensDevice) return `?device_id=${encodeURIComponent(lensDevice)}`; // nothing playing: play on the glasses
   const d = await api('GET', '/me/player/devices');
   const list: any[] = (d?.devices ?? []).filter((x: any) => !x.is_restricted);
   const pick = list.find((x) => x.is_active) ?? list.find((x) => x.type === 'Smartphone') ?? list[0];
@@ -206,6 +232,10 @@ async function doAction(action: string, value?: number | string) {
       break;
     case 'volume':
       await api('PUT', `/me/player/volume?volume_percent=${Math.max(0, Math.min(100, Number(value)))}`);
+      break;
+    case 'here': // move whatever is playing to the glasses
+      if (!lensDevice) throw new Error('the glasses player is not ready yet');
+      await api('PUT', '/me/player', { device_ids: [lensDevice], play: true });
       break;
     case 'playUri': {
       const uri = String(value);

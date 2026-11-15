@@ -33,7 +33,7 @@ glasses web app (shell)  ◀──WSS──▶  cloud relay (always on)  ◀─�
 | Gmail | Gmail API, OAuth refresh token on the relay | No | Inbox, triage, archive, reply (Claude drafts, you approve) |
 | Google Calendar | Calendar API, same OAuth | No | Agenda, create/move events, RSVP, reminders as toasts |
 | Weather | Open-Meteo (no key) | No | Location from the iPhone app, or a fixed city in settings |
-| Voice input ("free flow") | iPhone app records the glasses' mic over Bluetooth → Groq Whisper → Claude cleanup → relay | No | The web app has no mic, so this needs the iPhone app. Check Wispr Flow for a public API; if none, our own pipeline does the same job |
+| Voice input (FreeFlow-style) | Port [FreeFlow](https://github.com/zachlatta/freeflow)'s pipeline (MIT): iPhone app records the glasses' mic over Bluetooth → relay → Groq Whisper (or any OpenAI-compatible server) → LLM cleanup with a custom prompt and vocabulary → text on the lens | No | FreeFlow itself is macOS-only with no API, so we reuse its approach, not the app. Credit it in the code. The web app has no mic, so this needs the iPhone app |
 | Messages (iMessage) | BlueBubbles server | **Yes, always-on Mac** | iMessage only works from a Mac. Use a cheap always-on Mac mini, or accept that it's off when the laptop is |
 | WhatsApp | Option A: WhatsApp Business Cloud API (separate business number). Option B: unofficial libraries (Baileys) on your own number | No | B breaks WhatsApp's terms and can get the number banned. Decide before building |
 | Phone calls | The glasses already handle calls through the phone. We add a call log, "call back" and Claude summaries. Real dialing from our app: Twilio VoIP number + CallKit in the iPhone app | No | iOS doesn't let apps place or answer cellular calls silently. Twilio costs money per minute |
@@ -64,7 +64,8 @@ glasses web app (shell)  ◀──WSS──▶  cloud relay (always on)  ◀─�
 
 ### Phase 4: iPhone app (`ios/`)
 - [ ] SwiftUI app, connects to the relay with the same protocol
-- [ ] Voice input from the glasses' mic → Groq → relay → shown on the lens
+- [ ] Voice input from the glasses' mic → relay's FreeFlow-style pipeline (Groq transcription + cleanup, custom vocabulary) → shown on the lens
+- [ ] Edit mode like FreeFlow's: pick a draft on the lens, speak an instruction, get it rewritten
 - [ ] APNs push, location for weather, background refresh
 - [ ] Check Meta's Wearables Device Access Toolkit for Display support (mic, maybe more)
 

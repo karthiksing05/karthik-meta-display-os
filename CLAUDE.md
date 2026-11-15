@@ -17,7 +17,9 @@ Read `docs/ARCHITECTURE.md` first, then `docs/ROADMAP.md` for the plan and phase
   - Claude sessions: cloud sessions first, with laptop sessions when the Mac is online
   - Gmail and Google Calendar (all of it: read, triage, reply, create/edit events, invites)
   - Messages through BlueBubbles, WhatsApp, phone calls, weather
-  - Voice input that is better than Meta's dictation ("free flow" style: speak, then clean it up)
+  - Voice input that is better than Meta's dictation, modelled on FreeFlow
+    (github.com/zachlatta/freeflow, MIT): transcribe with Groq or any OpenAI-compatible server, then
+    clean it up with a custom prompt and vocabulary. The pipeline runs on the relay
   - 2FA codes (docs/TWO_FACTOR.md) and anything else an average OS has that helps productivity
 - Duplicating what the glasses' OS already does is now **allowed** when our version is better or
   keeps everything in one place.

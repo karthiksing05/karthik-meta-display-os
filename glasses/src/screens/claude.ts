@@ -1,7 +1,7 @@
 import { register, go, back, replace } from '../nav.ts';
 import { store, send, localNotify } from '../store.ts';
 import { C, ago, agoText, bar, btn, esc, footer, header, icon, md, statusColor } from '../ui.ts';
-import { clearComposer, composerBox, mountComposer } from './composer.ts';
+import { clearComposer, composerBox, mountComposer, startDictation } from './composer.ts';
 import { on, onEach } from './util.ts';
 import type { Approval, Question, SessionInfo } from '../../../shared/protocol.ts';
 
@@ -66,6 +66,7 @@ register('claude', {
           ? `<div class="label">ask ${esc(targetName)}</div>${composerBox('ask')}`
           : `<div class="row">
         ${btn('ask', `ask ${esc(targetName)}…`, { icon: 'ask', cls: 'grow wide' })}
+        ${btn('askDictate', 'dictate', { icon: 'mic', cls: 'chip' })}
         ${btn('target', '▾', { cls: 'chip' })}
       </div>`
       }
@@ -96,6 +97,7 @@ register('claude', {
       store.emit();
     });
     on(root, 'ask', () => toggle('ask', true));
+    on(root, 'askDictate', () => startDictation('ask', () => toggle('ask', true)));
     mountComposer(
       root,
       'ask',
@@ -242,10 +244,11 @@ const lastClaude = (x: SessionInfo) => [...x.transcript].reverse().find((t) => t
 /** Reply button, or the reply box in its place once opened (same data-f key → focus lands in it). */
 function replyBox(x: SessionInfo, label: string, def = false) {
   if (open.has(x.id)) return composerBox('reply', `reply to ${x.name}: pinch, then dictate or handwrite`);
-  return btn('reply', label, { icon: 'mic', def });
+  return btn('reply', label, { icon: 'comms', def }) + btn('dictate', 'dictate', { icon: 'mic' });
 }
 function mountReply(root: HTMLElement, x: SessionInfo | undefined, id: string) {
   on(root, 'reply', () => toggle(id, true));
+  on(root, 'dictate', () => startDictation('reply', () => toggle(id, true)));
   mountComposer(
     root,
     'reply',
@@ -309,7 +312,7 @@ register('session', {
         ${!ext && busy ? btn('stop', 'stop', { icon: 'stop' }) : ''}
       </div>
     </main>
-    ${footer(replying ? 'pinch the box to talk · back closes it' : ext && busy ? 'running elsewhere · replies are delivered when it finishes this step' : 'pinch a phrase to send it · reply to dictate')}`;
+    ${footer(replying ? 'pinch the box to talk · back closes it' : ext && busy ? 'running elsewhere · replies are delivered when it finishes this step' : 'pinch a phrase to send it · dictate to talk')}`;
   },
   key: (e, { id }) => closeReplyKey(e, id),
   mount(root, { id }) {

@@ -7,8 +7,24 @@ import { btn, esc } from '../ui.ts';
  * text and you send the clean or the spoken version. One box per `key` (= the textarea's data-f),
  * so give the button that opens it the same key and focus lands straight in the box.
  */
-const drafts = new Map<string, { raw: string; cleaned: string; busy: boolean }>();
+const drafts = new Map<string, { raw: string; cleaned: string; busy: boolean; dictate?: boolean }>();
 const draft = (key: string) => drafts.get(key) ?? (drafts.set(key, { raw: '', cleaned: '', busy: false }), drafts.get(key)!);
+
+/**
+ * The "dictate" button: open the box for `key` (via `open`), always clean the result FreeFlow-style
+ * (whatever the dictation cleanup setting says), and put you straight into the glasses' text input
+ * instead of waiting for a pinch on the box.
+ */
+export function startDictation(key: string, open: () => void) {
+  draft(key).dictate = true;
+  open();
+  requestAnimationFrame(() => {
+    const ta = document.querySelector<HTMLTextAreaElement>(`textarea[data-f="${CSS.escape(key)}"]`);
+    if (!ta) return;
+    ta.focus();
+    ta.click(); // the glasses open their composer on a pinch (click) on a text box
+  });
+}
 
 export function composerBox(key: string, placeholder = 'pinch here, then dictate or handwrite') {
   const d = draft(key);
@@ -36,7 +52,7 @@ export function mountComposer(root: HTMLElement, key: string, deliver: (text: st
   const finish = async () => {
     d.raw = ta.value;
     if (!d.raw.trim()) return;
-    if (store.state?.settings.dictationCleanup ?? true) {
+    if (d.dictate || (store.state?.settings.dictationCleanup ?? true)) {
       d.busy = true;
       store.emit();
       const ctx = (store.state?.sessions ?? []).map((s) => `${s.name} (${s.repo})`).join(', ');

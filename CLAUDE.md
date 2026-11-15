@@ -1,20 +1,21 @@
 # ClaudeProd: notes for Claude Code
 
 A productivity OS shell for Meta Ray-Ban Display glasses. It replaces the Meta app's own features with
-one Claude-centred shell that works whether or not the laptop is on. Parts:
+one Claude-centred shell. The MacBook is the server: it stays on, plugged in and on Wi-Fi, and the user
+uses everything from the glasses while away from it. Parts:
 
 - `glasses/`: the 600×600 web app (the shell the user sees)
-- `relay/`: the Node server. **It runs in the cloud and is always on.** It holds all state, secrets and
-  integrations
-- `mac/`: optional Mac node (menu bar app, local repos, BlueBubbles, terminal sessions). Not required
-- `ios/` (planned): iPhone companion app for the things a web app can't do (mic, push, background)
+- `relay/`: the Node server. It runs on the Mac and is reached over a tunnel. It holds all state,
+  secrets and integrations
+- `mac/`: ClaudeProd.app, the menu bar app that runs the relay, keeps the Mac awake and the tunnel up
+- `ios/` (planned): iPhone companion app for the things a web app can't do (mic, push)
 
 Read `docs/ARCHITECTURE.md` first, then `docs/ROADMAP.md` for the plan and phase status.
 
 ## Goal and scope
 - An OS-style shell with a clear focus on productivity: launcher, status bar, notification center,
   app switcher, settings, plus these apps:
-  - Claude sessions: cloud sessions first, with laptop sessions when the Mac is online
+  - Claude sessions on the Mac (local repos, the user's Claude login and connectors)
   - Gmail and Google Calendar (all of it: read, triage, reply, create/edit events, invites)
   - Messages through BlueBubbles, WhatsApp, phone calls, weather
   - Voice input that is better than Meta's dictation, modelled on FreeFlow
@@ -23,8 +24,11 @@ Read `docs/ARCHITECTURE.md` first, then `docs/ROADMAP.md` for the plan and phase
   - 2FA codes (docs/TWO_FACTOR.md) and anything else an average OS has that helps productivity
 - Duplicating what the glasses' OS already does is now **allowed** when our version is better or
   keeps everything in one place.
-- **Always works:** no feature may depend on the laptop being awake. Anything Mac-only (local repos,
-  desk sync, terminal hooks, BlueBubbles) must show "Mac offline" and degrade, never break the shell.
+- **Assume the user is never at the Mac.** Every feature must work from the glasses alone: nothing
+  may need a click, a dialog or a password on the Mac. Keeping the Mac awake, reachable and
+  restarting by itself is a core feature, not setup.
+- **When the Mac is unreachable**, the glasses show it clearly ("Mac offline since 2:14") with the last
+  state still readable.
 - Claude only for AI: never add Meta AI, WebMCP or Meta connector integrations. Speech-to-text
   providers (Groq Whisper etc.) are fine.
 
@@ -56,7 +60,7 @@ Read `docs/ARCHITECTURE.md` first, then `docs/ROADMAP.md` for the plan and phase
 
 ## Checks
 `npm run typecheck`, then `npm run dev:demo` and click through with the arrow keys.
-Relay deploys: see `docs/ROADMAP.md` (hosting). Mac app changes: `npm run app`.
+Mac app changes: `npm run app` (rebuilds, reinstalls and relaunches it).
 
 ## Meta docs from inside Claude Code
 `claude mcp add --transport http meta-wearables https://mcp.developer.meta.com/wearables`

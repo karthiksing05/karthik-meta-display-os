@@ -1,7 +1,8 @@
 # Roadmap: from Claude monitor to productivity OS
 
-The goal: one shell on the glasses that replaces the Meta app's features, centred on productivity,
-that keeps working when the laptop is off. This file is the plan and the record of what's done.
+The goal: one shell on the glasses that replaces the Meta app's features, centred on productivity.
+The MacBook is the server: it stays on, plugged in and on Wi-Fi, and you use everything from the
+glasses while you're away from it. This file is the plan and the record of what's done.
 
 ## What "OS" means here
 
@@ -9,91 +10,97 @@ The glasses run Meta's OS, and we can't replace it. Our app is a web app the use
 "OS" means our shell has its own launcher, status bar, notification center, app switcher and
 settings, and that once you're in it you don't need to leave.
 
-## Target architecture
+## Architecture
 
 ```
-glasses web app (shell)  ◀──WSS──▶  cloud relay (always on)  ◀──▶  Google, WhatsApp, Twilio, weather,
-                                          ▲      ▲                 Claude (Agent SDK), Groq
-                                          │      │
-                        iPhone app ───────┘      └─────── Mac node (optional, when online):
-                        mic → voice input,                local repos, terminal sessions,
-                        push, background sync             BlueBubbles, desk sync
+glasses web app (shell)  ◀──WSS over tunnel──▶  ClaudeProd.app on the MacBook (the relay)
+                                                  │  Claude sessions (local repos, your login)
+iPhone app (later) ──────────────────────────────▶│  BlueBubbles (same Mac)
+  mic → voice input, push when lens is asleep     │  Google, Twilio, weather, Groq
+                                                  └─ vault, state, all secrets
 ```
 
-- **Cloud relay is the source of truth.** All state, the vault and the integrations live there.
-- **The Mac and the iPhone are clients/nodes**, not servers. They connect out to the relay. When one is
-  offline, its features say so and everything else keeps working.
+- **The Mac is the source of truth.** All state, the vault and the integrations live there.
+- **Assume you are never at the Mac.** Every feature must work from the glasses alone. Nothing may
+  need a click, a dialog or a password typed on the Mac.
+- **When the Mac is unreachable**, the glasses say so clearly ("Mac offline since 2:14") and the
+  last state stays readable. They don't pretend to work.
 
-## Feature by feature: what's possible
+## Feature by feature
 
-| Feature | How | Needs Mac? | Notes / risk |
-|---|---|---|---|
-| Cloud Claude sessions | Agent SDK on the relay, repos cloned from GitHub into the server's disk | No | Auth with `CLAUDE_CODE_OAUTH_TOKEN` or an API key. Sessions push to branches and open PRs |
-| Laptop Claude sessions | Existing hooks + sessions, through the Mac node | Yes | Shows "Mac offline" when asleep |
-| Gmail | Gmail API, OAuth refresh token on the relay | No | Inbox, triage, archive, reply (Claude drafts, you approve) |
-| Google Calendar | Calendar API, same OAuth | No | Agenda, create/move events, RSVP, reminders as toasts |
-| Weather | Open-Meteo (no key) | No | Location from the iPhone app, or a fixed city in settings |
-| Voice input (FreeFlow-style) | Port [FreeFlow](https://github.com/zachlatta/freeflow)'s pipeline (MIT): iPhone app records the glasses' mic over Bluetooth → relay → Groq Whisper (or any OpenAI-compatible server) → LLM cleanup with a custom prompt and vocabulary → text on the lens | No | FreeFlow itself is macOS-only with no API, so we reuse its approach, not the app. Credit it in the code. The web app has no mic, so this needs the iPhone app |
-| Messages (iMessage) | BlueBubbles server | **Yes, always-on Mac** | iMessage only works from a Mac. Use a cheap always-on Mac mini, or accept that it's off when the laptop is |
-| WhatsApp | Option A: WhatsApp Business Cloud API (separate business number). Option B: unofficial libraries (Baileys) on your own number | No | B breaks WhatsApp's terms and can get the number banned. Decide before building |
-| Phone calls | The glasses already handle calls through the phone. We add a call log, "call back" and Claude summaries. Real dialing from our app: Twilio VoIP number + CallKit in the iPhone app | No | iOS doesn't let apps place or answer cellular calls silently. Twilio costs money per minute |
-| 2FA codes | Existing vault | No | Already done |
-| Notifications | Relay pushes to the lens; iPhone app gets APNs pushes when the lens is asleep | No | |
+| Feature | How | Notes / risk |
+|---|---|---|
+| Claude sessions | Existing Agent SDK sessions on the Mac, local repos, your Claude login and connectors | Already built. Cloud sessions (Claude Code on the web) are a later add-on, if an API for them is available |
+| Gmail | Gmail API, OAuth refresh token in the relay's encrypted store | Inbox, triage, archive, reply (Claude drafts, you approve on the lens) |
+| Google Calendar | Calendar API, same OAuth | Agenda, create/move events, RSVP, reminders as toasts |
+| Weather | Open-Meteo (no key) | Location from the iPhone app later; a fixed city in settings until then |
+| Voice input (FreeFlow-style) | Port [FreeFlow](https://github.com/zachlatta/freeflow)'s pipeline (MIT): audio → Groq Whisper (or any OpenAI-compatible server) → cleanup with a custom prompt and vocabulary → text on the lens | The web app has no mic and the Mac's mic is at home, so audio has to come from the iPhone app. Until then: Meta's composer + our cleanup (already built) |
+| Messages (iMessage) | BlueBubbles server on the same Mac | Works because the Mac is always on. Needs Messages signed in on the Mac |
+| WhatsApp | Option A: WhatsApp Business Cloud API (separate number). Option B: unofficial libraries (Baileys) on your own number | B breaks WhatsApp's terms and can get the number banned. Decide before building |
+| Phone calls | Twilio click-to-call bridge: relay has Twilio ring your cell, you answer on the glasses, Twilio connects the other person. Your number shows as caller ID once verified | Mac's own Continuity calling won't work: the audio would play on the Mac, not with you. Costs a few cents a minute |
+| 2FA codes | Existing vault | Already done |
+| Notifications | Relay pushes to the lens; iPhone app gets pushes when the lens is asleep (later) | |
 
 ## Phases
 
-### Phase 1: always on (do first)
-- [ ] Move the relay to a cloud host (a small VPS such as Hetzner, or Fly.io) with a fixed domain and TLS
-- [ ] Docker image + `deploy/cloud/` scripts; systemd or the platform's restart policy
-- [ ] Split Mac-only code (`desk.ts`, `host.ts`, `external.ts`, the osascript parts of `sessions.ts`)
-      into a **Mac node** that connects out to the relay
-- [ ] Cloud Claude sessions: clone repos from GitHub, worktree per session, push to branches
-- [ ] "Mac offline" states everywhere a Mac feature appears
+### Phase 1: the Mac stays reachable (do first)
+- [ ] **Stay awake.** `up.sh` uses `caffeinate -i`, which still lets a closed lid sleep. Add a Mac app
+      setting for "keep awake with lid closed" (`caffeinate -s` on power, or `pmset disablesleep` with
+      a warning about heat in a bag) and show the current mode in the menu
+- [ ] **Start by itself.** Launch at login (`SMAppService`), relaunch the relay if it crashes, restart
+      the tunnel after Wi-Fi changes or wake
+- [ ] **Survive power cuts.** `pmset autorestart 1`. Note: with FileVault on, after an unplanned
+      reboot nothing runs until someone unlocks the Mac. For planned restarts use `fdesetup authrestart`
+- [ ] **Fixed URL.** Make Tailscale Funnel the default so the installed app never needs a new QR
+- [ ] **Offline screen** on the glasses with "last seen" time and the cached state
+- [ ] **Uptime alert.** A free external monitor pings `/healthz` over the tunnel and alerts your phone
+- [ ] **No Mac dialogs.** Audit for anything that pops a prompt on the Mac (keychain, permissions,
+      osascript) and handle it up front during setup
 
 ### Phase 2: the shell
 - [ ] App registry in `shared/protocol.ts` (id, name, icon, entry screen, state slice)
 - [ ] Relay services as modules (`init`, `state`, `handle`) loaded by `hub.ts`
-- [ ] Launcher built from the registry, status bar (time, battery, relay, Mac, "needs you" count)
+- [ ] Launcher built from the registry, status bar (time, glasses battery, Mac battery and
+      power, connection, "needs you" count)
 - [ ] Notification center with history, app switcher, per-app settings
 
-### Phase 3: Google
-- [ ] OAuth flow on the relay (one-time setup from a browser), encrypted token storage
+### Phase 3: Google and weather
+- [ ] OAuth setup in the Mac app (one-time browser sign-in), encrypted token storage
 - [ ] Calendar app: today, next event, create/move, RSVP
 - [ ] Gmail app: inbox, read, archive, Claude-drafted replies
 - [ ] Weather app
 
-### Phase 4: iPhone app (`ios/`)
-- [ ] SwiftUI app, connects to the relay with the same protocol
-- [ ] Voice input from the glasses' mic → relay's FreeFlow-style pipeline (Groq transcription + cleanup, custom vocabulary) → shown on the lens
-- [ ] Edit mode like FreeFlow's: pick a draft on the lens, speak an instruction, get it rewritten
-- [ ] APNs push, location for weather, background refresh
-- [ ] Check Meta's Wearables Device Access Toolkit for Display support (mic, maybe more)
-
-### Phase 5: messaging and calls
-- [ ] BlueBubbles via the Mac node (or a dedicated Mac mini)
+### Phase 4: messaging and calls
+- [ ] BlueBubbles app: conversations, read, reply with dictation
+- [ ] Twilio click-to-call bridge, call log, call back
 - [ ] WhatsApp (after picking option A or B above)
-- [ ] Call log + Twilio/CallKit calling if wanted
+
+### Phase 5: iPhone app (`ios/`)
+- [ ] SwiftUI app, connects to the relay with the same protocol
+- [ ] Voice input from the glasses' mic → relay's FreeFlow-style pipeline → shown on the lens
+- [ ] Edit mode like FreeFlow's: pick a draft on the lens, speak an instruction, get it rewritten
+- [ ] Pushes when the lens is asleep, location for weather
+- [ ] First check whether Meta's Wearables Device Access Toolkit gives apps the Display glasses' mic
 
 ## Keeping it running permanently
 
-- **Hosting:** one small always-on server, auto-restart, OS updates on. Budget roughly $5–10/month
-  plus any Twilio usage.
-- **Fixed URL:** your own domain. The installed glasses app points at it, so the host can change
-  without reinstalling on the lens.
-- **Backups:** nightly encrypted backup of the relay's data dir (vault, OAuth tokens, session
-  records) to a second place. Test a restore once.
-- **Monitoring:** an uptime check that pings `/status.json` and alerts your phone if it's down.
-- **Credentials:** note when each token expires (Claude OAuth token, Google refresh token, WhatsApp).
-  The status bar should show an orange warning before one expires.
-- **Updates:** pin dependency versions, upgrade on purpose, run `npm run typecheck` and the demo
-  before each deploy. Keep a one-command rollback to the previous image.
-- **Platform risk:** Meta can change the web app platform. Keep the relay and the iPhone app
-  independent of it, so most of the system survives if the lens app has to be rebuilt.
-- **Fallback:** the relay still runs on the Mac (`npm run up`), so if the server is down you can
-  point the glasses at the laptop.
+- **Power:** keep the MacBook plugged in. The status bar shows Mac battery so you notice if it isn't.
+- **Fixed URL:** Tailscale Funnel gives a stable address, so the glasses app never needs reinstalling.
+- **Backups:** nightly encrypted backup of the relay's data dir (vault, OAuth tokens, session records)
+  to iCloud Drive or a second disk. Test a restore once.
+- **Credentials:** track when each token expires (Claude, Google, Twilio, WhatsApp). The status bar
+  shows an orange warning before one does.
+- **macOS updates:** they reboot the Mac. Set them to install at night, and because of FileVault, plan
+  to be home or use `fdesetup authrestart`. Otherwise you're offline until you unlock it.
+- **Updates to this app:** pin dependency versions, run `npm run typecheck` and the demo before
+  relaunching, keep the previous build for rollback.
+- **Platform risk:** Meta can change the web app platform. Keep the relay independent of it, so most
+  of the system survives if the lens app has to be rebuilt.
+- **Cloud fallback (optional, later):** the relay can also run on a small server (see UPLOAD.md) if
+  you ever want it to work while the Mac is off.
 
 ## Open questions
+- Closed lid: OK to keep the MacBook awake with the lid shut (`pmset disablesleep`), or will it stay open?
 - WhatsApp: business API (safe, separate number) or unofficial (your number, ban risk)?
-- iMessage: buy an always-on Mac mini, or accept Messages only when the laptop is on?
-- Calls: is the built-in Meta calling plus our call log enough, or do you want Twilio?
+- Twilio for calls, or is Meta's built-in calling plus a call log enough?
 - Does the Wearables Device Access Toolkit support the Display glasses' mic yet?

@@ -111,7 +111,7 @@ browser with fake sessions. Arrow keys = swipes, Enter = pinch, Esc = back.
 
 <table>
 <tr>
-<td align="center" width="33%"><img src="docs/images/hub.png" width="260"><br><b>claude</b>: "how's everything going?", approvals, Claude's questions, ask any session</td>
+<td align="center" width="33%"><img src="docs/images/home.png" width="260"><br><b>home</b>: "how's everything going?", approvals, Claude's questions, sessions, ask any session, quick sends</td>
 <td align="center" width="33%"><img src="docs/images/status-report.png" width="260"><br><b>status</b>: a line on every session, the ones that need you first</td>
 <td align="center" width="33%"><img src="docs/images/sessions.png" width="260"><br><b>sessions</b>: needs you / working / your turn / earlier</td>
 </tr>

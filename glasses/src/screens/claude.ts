@@ -21,8 +21,13 @@ function checkStatus() {
   store.emit();
 }
 
-register('claude', {
-  render() {
+/**
+ * The hub's contents, shared by the home screen and the 'claude' screen: "how's everything going?",
+ * whatever's waiting on you, then `nav` (the caller's own buttons or tiles), then the ask bar
+ * (dictate / handwrite, and who to ask) and the quick-send phrases.
+ */
+export function hubBody(nav: string, label = '') {
+  {
     const s = store.state;
     const sessions = s?.sessions ?? [];
     const approvals = s?.approvals ?? [];
@@ -55,12 +60,12 @@ register('claude', {
         </button>`
       : '';
 
-    return `${header('claude', C.pink)}
-    <main class="scroll">
+    return `${label}
       ${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'primary big', icon: 'pulse', def: true })}
       ${reportCard}
       ${aCard}
       ${qCard}
+      ${nav}
       ${
         open.has('ask')
           ? `<div class="label">ask ${esc(targetName)}</div>${composerBox('ask', targetName)}`
@@ -70,20 +75,18 @@ register('claude', {
       </div>`
       }
       <div class="label">quick send → ${esc(targetName)}</div>
-      <div class="btns">${(s?.phrases ?? []).map((p, i) => btn(`ph:${i}`, esc(p.label), { cls: 'chip' })).join('')}</div>
-      <div class="btns">
-        ${btn('sessions', `sessions · ${sessions.length}`, { icon: 'sessions' })}
-        ${btn('new', 'new', { icon: 'plus' })}
-        ${btn('chat', 'chat', { icon: 'ask' })}
-      </div>
-    </main>
-    ${footer('pinch = select · ▾ cycles who you ask')}`;
-  },
-  key(e) {
-    if (e.key === 'Escape' && open.has('ask')) return clearComposer('ask'), toggle('ask', false), true;
-    return false;
-  },
-  mount(root) {
+      <div class="btns">${(s?.phrases ?? []).map((p, i) => btn(`ph:${i}`, esc(p.label), { cls: 'chip' })).join('')}</div>`;
+  }
+}
+
+/** Back closes the ask box if it's open. */
+export function hubKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && open.has('ask')) return clearComposer('ask'), toggle('ask', false), true;
+  return false;
+}
+
+export function hubMount(root: HTMLElement) {
+  {
     const s = store.state;
     on(root, 'status', checkStatus);
     on(root, 'report', () => go('report'));
@@ -119,7 +122,24 @@ register('claude', {
         send({ t: 'question.answer', id: q.id, answers: { [q.question]: q.options[Number(k)].label } });
       });
     }
+  }
+}
+
+register('claude', {
+  render() {
+    const n = store.state?.sessions.length ?? 0;
+    return `${header('claude', C.orange)}
+    <main class="scroll">
+      ${hubBody(`<div class="btns">
+        ${btn('sessions', `sessions · ${n}`, { icon: 'sessions' })}
+        ${btn('new', 'new', { icon: 'plus' })}
+        ${btn('chat', 'chat', { icon: 'ask' })}
+      </div>`)}
+    </main>
+    ${footer('pinch = select · who ▾ picks who you ask')}`;
   },
+  key: hubKey,
+  mount: hubMount,
 });
 
 function targetName() {

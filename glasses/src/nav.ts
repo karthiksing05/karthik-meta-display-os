@@ -122,7 +122,12 @@ function move(dir: 'up' | 'down' | 'left' | 'right') {
   }
   if (best) {
     best.focus({ preventScroll: true });
-    best.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    // Back on the topmost control: scroll all the way up, so whatever sits above it (the home band,
+    // a label) comes back into view too.
+    const top = best.getBoundingClientRect().top;
+    const main = best.closest<HTMLElement>('main.scroll');
+    if (main && dir === 'up' && all.every((el) => el.getBoundingClientRect().top >= top - 4)) main.scrollTo({ top: 0, behavior: 'smooth' });
+    else best.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 }
 

@@ -53,6 +53,7 @@ export const state: ShellState = {
   host: { battery: null, charging: false, wifi: null },
   track: null,
   picks: [],
+  playlists: [],
   build: buildId(),
 };
 

@@ -149,3 +149,5 @@ textarea:focus { outline: none; border-color: var(--pink); }
 .picks { display: flex; gap: 10px; justify-content: center; }
 .pick { padding: 0; border: 1.5px solid transparent; border-radius: 10px; background: none; cursor: pointer; }
 .pick:focus { border-color: var(--pink); outline: none; }
+.pl-tile { width: 102px; height: 102px; border: 1.5px solid var(--line); background: var(--panel); color: var(--fg); font: inherit;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }

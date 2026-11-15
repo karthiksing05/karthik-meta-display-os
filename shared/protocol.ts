@@ -96,6 +96,8 @@ export interface Pick {
   uri: string;
   title: string;
   art: string | null;
+  /** Playlists: how many tracks. */
+  count?: number;
 }
 
 export interface Integrations {
@@ -130,6 +132,8 @@ export interface ShellState {
   host: HostInfo;
   track: Track | null;
   picks: Pick[];
+  /** Your Spotify playlists (yours and followed), for the playlist picker. */
+  playlists: Pick[];
   /** Changes when the glasses app is rebuilt; the lens reloads itself to pick up the new version. */
   build: string;
 }

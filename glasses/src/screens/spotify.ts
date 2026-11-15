@@ -1,4 +1,4 @@
-import { register } from '../nav.ts';
+import { register, go, back } from '../nav.ts';
 import { store, send } from '../store.ts';
 import { C, art, btn, esc, footer, header, icon } from '../ui.ts';
 import { on, onEach } from './util.ts';
@@ -34,7 +34,7 @@ register('spotify', {
         <div class="small muted">On your Mac, open<br><span class="c">${esc(location.origin)}/spotify/login?k=&lt;SHELL_TOKEN&gt;</span><br>once and sign in. Spotify Premium is needed to control playback.</div>
       </div></main>${footer('back')}`;
     }
-    const picks = (s.picks ?? []).slice(0, 5);
+    const picks = (s.picks ?? []).slice(0, 4);
     return `${header(t?.playing ? 'now playing' : 'music', C.green)}
     <main>
       <div class="np">
@@ -59,7 +59,7 @@ register('spotify', {
         ${btn('next', '', { cls: 'round', icon: 'next' })}
         ${btn('vup', '', { cls: 'round', icon: 'plus' })}
       </div>
-      <div class="picks">${picks.map((p, i) => `<button class="pick" data-f="p:${i}" title="${esc(p.title)}">${art(p.art, p.title, 102)}</button>`).join('')}</div>
+      <div class="picks">${picks.map((p, i) => `<button class="pick" data-f="p:${i}" title="${esc(p.title)}">${art(p.art, p.title, 102)}</button>`).join('')}<button class="pick pl-tile" data-f="playlists">${icon('music', 30, C.green)}<span class="small">playlists</span><span class="small muted">${s.playlists?.length ?? 0}</span></button></div>
     </main>
     ${footer('pinch-twist also sets volume · ↓ to pick a cover')}`;
   },
@@ -74,6 +74,40 @@ register('spotify', {
     onEach(root, 'p:', (i) => {
       const p = store.state?.picks[Number(i)];
       if (p) send({ t: 'spotify', action: 'playUri', value: p.uri });
+    });
+    on(root, 'playlists', () => go('playlists'));
+  },
+});
+
+/** Every playlist (yours and the ones you follow): pinch one to play it, then back to the player. */
+register('playlists', {
+  render() {
+    const list = store.state?.playlists ?? [];
+    const playing = store.state?.track;
+    return `${header('playlists', C.green)}
+    <main class="scroll">
+      ${
+        list.length
+          ? `<div class="list">${list
+              .map(
+                (p, i) => `<button class="item" data-f="pl:${i}" ${i === 0 ? 'data-default' : ''}>
+                  ${art(p.art, p.title, 52)}
+                  <span class="grow"><span class="y ellipsis" style="display:block">${esc(p.title)}</span>
+                  <span class="small muted">${p.count != null ? `<span class="v">${p.count}</span> tracks` : 'playlist'}</span></span>
+                </button>`,
+              )
+              .join('')}</div>`
+          : '<div class="center muted">No playlists yet. They load a minute after you sign in.</div>'
+      }
+    </main>
+    ${footer(playing ? `now: ${esc(playing.title)} · pinch to play` : 'pinch a playlist to play it')}`;
+  },
+  mount(root) {
+    onEach(root, 'pl:', (i) => {
+      const p = store.state?.playlists[Number(i)];
+      if (!p) return;
+      send({ t: 'spotify', action: 'playUri', value: p.uri });
+      back();
     });
   },
 });

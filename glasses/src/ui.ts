@@ -87,7 +87,7 @@ export function icon(name: keyof typeof P | string, size = 22, color = 'currentC
 export function btn(key: string, label: string, opts: { icon?: string; cls?: string; attrs?: string; def?: boolean } = {}) {
   return `<button class="btn ${opts.cls ?? ''}" data-f="${esc(key)}" ${opts.def ? 'data-default' : ''} ${opts.attrs ?? ''}>${
     opts.icon ? icon(opts.icon, 20) : ''
-  }<span>${label}</span></button>`;
+  }${label ? `<span>${label}</span>` : ''}</button>`;
 }
 
 export function bar(frac: number | null, color = C.green) {

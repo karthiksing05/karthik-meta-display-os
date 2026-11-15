@@ -152,6 +152,10 @@ export async function loadPicks() {
       if (picks.length >= 8) break;
     }
     state.picks = picks;
+    const pl = await api('GET', '/me/playlists?limit=50');
+    state.playlists = (pl?.items ?? [])
+      .filter((x: any) => x?.uri)
+      .map((x: any) => ({ uri: x.uri, title: x.name || 'Playlist', art: pickArt(x.images), count: x.tracks?.total ?? x.items?.total }));
     hub.changed();
   } catch (e) {
     console.warn('[spotify picks]', (e as Error).message);
@@ -163,10 +167,33 @@ function pickArt(images?: { url: string; width: number }[]): string | null {
   return [...images].sort((a, b) => Math.abs(a.width - 300) - Math.abs(b.width - 300))[0].url;
 }
 
+/**
+ * Spotify only takes commands for a device that's active. If none is (nothing played for a while),
+ * pick one that's open: the phone, a computer, the glasses' paired phone. null = Spotify isn't open anywhere.
+ */
+async function deviceParam(): Promise<string> {
+  if (state.track?.device) return '';
+  const d = await api('GET', '/me/player/devices');
+  const list: any[] = (d?.devices ?? []).filter((x: any) => !x.is_restricted);
+  const pick = list.find((x) => x.is_active) ?? list.find((x) => x.type === 'Smartphone') ?? list[0];
+  if (!pick) throw new Error('Spotify isn\'t open on any device: open it on your phone, then try again');
+  return `?device_id=${encodeURIComponent(pick.id)}`;
+}
+
 export async function spotifyAction(action: string, value?: number | string) {
+  try {
+    await doAction(action, value);
+  } catch (e) {
+    const msg = (e as Error).message;
+    hub.broadcast({ t: 'notify', text: msg.includes('open it on your phone') ? msg : `Spotify: ${msg.replace(/^spotify \S+ \S+: /, 'error ')}`, level: 'warn' });
+  }
+  setTimeout(pollSpotify, 400);
+}
+
+async function doAction(action: string, value?: number | string) {
   switch (action) {
     case 'play':
-      await api('PUT', '/me/player/play');
+      await api('PUT', `/me/player/play${await deviceParam()}`);
       break;
     case 'pause':
       await api('PUT', '/me/player/pause');
@@ -182,9 +209,8 @@ export async function spotifyAction(action: string, value?: number | string) {
       break;
     case 'playUri': {
       const uri = String(value);
-      await api('PUT', '/me/player/play', uri.includes(':track:') ? { uris: [uri] } : { context_uri: uri });
+      await api('PUT', `/me/player/play${await deviceParam()}`, uri.includes(':track:') ? { uris: [uri] } : { context_uri: uri });
       break;
     }
   }
-  setTimeout(pollSpotify, 400);
 }

@@ -78,28 +78,6 @@ export interface Settings {
   learnedRules: string[];
 }
 
-/** Spotify: what's playing (polled from the Web API on the relay). */
-export interface Track {
-  title: string;
-  artist: string;
-  album: string;
-  art: string | null;
-  durationMs: number;
-  progressMs: number;
-  playing: boolean;
-  volume: number | null;
-  device: string | null;
-}
-
-/** A recently played album or playlist, to start with one pinch. */
-export interface Pick {
-  uri: string;
-  title: string;
-  art: string | null;
-  /** Playlists: how many tracks. */
-  count?: number;
-}
-
 export interface Integrations {
   claude: boolean;
   groq: boolean;
@@ -107,12 +85,6 @@ export interface Integrations {
   totp: boolean;
   /** The whole app is behind a pattern/password (APP_PATTERN / APP_PASSWORD). */
   appLock: boolean;
-  /** Spotify signed in (once, at {PUBLIC_URL}/spotify/login?k=<SHELL_TOKEN>). */
-  spotify: boolean;
-  /** The Spotify sign-in allows playing on the glasses themselves (has the `streaming` permission). */
-  spotifyPlayer?: boolean;
-  /** The glasses' own Spotify player is connected right now. */
-  spotifyLens?: boolean;
   demo: boolean;
 }
 
@@ -134,10 +106,6 @@ export interface ShellState {
   serverTime: number;
   /** The Mac the relay runs on: battery and Wi-Fi (polled every 30 s). */
   host: HostInfo;
-  track: Track | null;
-  picks: Pick[];
-  /** Your Spotify playlists (yours and followed), for the playlist picker. */
-  playlists: Pick[];
   /** Changes when the glasses app is rebuilt; the lens reloads itself to pick up the new version. */
   build: string;
 }
@@ -166,8 +134,11 @@ export interface StatusReport {
   headline: string;
   /** When the previous check ran (what "since last" compares with). */
   previousAt?: number;
-  /** Every session, ones waiting on you first. `text` = where it stands; `change` = what moved since the last check. */
-  lines: { id: string; session: string; status: SessionStatus; needsYou: boolean; text: string; change?: string }[];
+  /**
+   * Every session, ones waiting on you first. `text` = where it stands; `change` = what moved since the last
+   * check; `answer` = the session's own reply to the status question, in its words.
+   */
+  lines: { id: string; session: string; status: SessionStatus; needsYou: boolean; text: string; change?: string; answer?: string }[];
 }
 
 // ---------- client → relay ----------
@@ -184,9 +155,6 @@ export type ClientMsg =
   | { t: 'ask'; target: 'all' | string; text: string }
   | { t: 'status.check' }
   | { t: 'dictation.clean'; reqId: string; text: string; context?: string }
-  | { t: 'spotify'; action: 'play' | 'pause' | 'next' | 'prev' | 'volume' | 'playUri' | 'here'; value?: number | string }
-  | { t: 'spotify.token'; reqId: string }
-  | { t: 'spotify.device'; id: string | null }
   | { t: 'settings.set'; patch: Partial<Settings> }
   | { t: 'rules.clear' }
   /** 2FA: unlock with the swipe pattern; codes go only to this connection. */
@@ -208,7 +176,6 @@ export type ServerMsg =
   | { t: 'totp.codes'; codes: TotpCode[]; unlockedUntil: number }
   | { t: 'totp.locked'; reason?: string; triesLeft?: number }
   | { t: 'dictation.cleaned'; reqId: string; text: string }
-  | { t: 'spotify.token'; reqId: string; token: string | null }
   | { t: 'notify'; text: string; level: 'info' | 'good' | 'warn' | 'error'; sessionId?: string }
   | { t: 'card'; sessionId: string; title: string; body: string }
   | { t: 'error'; text: string };

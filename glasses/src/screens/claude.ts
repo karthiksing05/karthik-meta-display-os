@@ -112,46 +112,88 @@ store.on(() => {
 });
 
 // ---------------- "How's everything going?" report ----------------
-// Every session, one line each, ones waiting on you first. Pinch a line to open that session.
+// Cards you swipe through: the overview first, then one card per session (ones waiting on you first),
+// each with where it stands, what changed since the last check, and its own answer. Pinch a session
+// card to open that session; ↓ for "check again".
+let card = 0;
+let cardsFor = 0; // the report the cards were opened on; a new report starts again at the overview
+
+function groupOf(needsYou: boolean, status: string) {
+  return needsYou ? 'needs you' : status === 'running' || status === 'starting' ? 'working' : status === 'stopped' ? 'earlier' : 'your turn';
+}
+
 register('report', {
   render() {
     const r = store.report;
     if (!r) return `${header('status')}<main class="center muted">No report yet.</main>`;
+    if (cardsFor !== r.at) (cardsFor = r.at), (card = 0);
+    const n = r.lines.length + 1;
+    card = Math.max(0, Math.min(card, n - 1));
     const live = new Map((store.state?.sessions ?? []).map((x) => [x.id, x]));
-    let lastGroup = '';
-    const rows = r.lines
-      .map((l) => {
-        const now = live.get(l.id);
-        const status = now?.status ?? l.status;
-        const group = l.needsYou ? 'needs you' : status === 'running' || status === 'starting' ? 'working' : status === 'stopped' ? 'earlier' : 'your turn';
-        const head = group !== lastGroup ? `<div class="label">${group}</div>` : '';
-        lastGroup = group;
-        return `${head}<button class="item msg" data-f="rl:${l.id}"${l.needsYou ? ` style="border-color:${C.orange}"` : ''}>
-          <i class="status" style="background:${statusColor(status)};margin-top:6px"></i>
-          <span class="grow">
-            <span class="row"><span class="y ellipsis grow">${esc(l.session)}</span>${now ? `<span class="small muted">${ago(now.lastActivity)}</span>` : ''}</span>
-            <span class="small" style="display:block;color:${l.needsYou ? C.orange : C.fg}">${esc(l.text)}</span>
-            ${l.change ? `<span class="small" style="display:block;color:${/^no change/i.test(l.change) ? C.cm : C.cyan}">since last · ${esc(l.change)}</span>` : ''}
-          </span>
-        </button>`;
-      })
-      .join('');
-    return `${header('status', C.pink)}
-    <main class="scroll">
-      <button class="item msg" data-f="overview" data-default>
-        <span class="grow"><span class="label" style="display:block">claude · ${agoText(r.at)}${r.previousAt ? ` · vs check ${agoText(r.previousAt)}` : ''}</span>
-        <span style="display:block">${esc(r.headline)}</span></span>
-      </button>
-      ${btn('recheck', checking ? 'checking…' : 'check again', { icon: 'pulse', cls: 'chip' })}
-      <div class="list">${rows || '<div class="muted center">No sessions.</div>'}</div>
+    const waiting = r.lines.filter((l) => l.needsYou).length;
+
+    let body: string;
+    let edge: string = C.pink;
+    if (card === 0) {
+      const counts = ['needs you', 'working', 'your turn', 'earlier']
+        .map((g) => [g, r.lines.filter((l) => groupOf(l.needsYou, live.get(l.id)?.status ?? l.status) === g).length] as const)
+        .filter(([, c]) => c)
+        .map(([g, c]) => `<span class="${g === 'needs you' ? 'o' : g === 'working' ? 'g' : 'muted'}"><span class="v">${c}</span> ${g}</span>`)
+        .join(' · ');
+      body = `<span class="label">overview · ${agoText(r.at)}${r.previousAt ? ` · vs check ${agoText(r.previousAt)}` : ''}</span>
+        <span class="y" style="font-size:22px;font-weight:700">${r.lines.length} session${r.lines.length === 1 ? '' : 's'}</span>
+        <span class="small">${counts || 'nothing running'}</span>
+        <span class="report-text" style="-webkit-line-clamp:10">${esc(r.headline)}</span>
+        <span class="small muted" style="margin-top:auto">→ swipe for each session</span>`;
+    } else {
+      const l = r.lines[card - 1];
+      const now = live.get(l.id);
+      const status = now?.status ?? l.status;
+      const group = groupOf(l.needsYou, status);
+      if (l.needsYou) edge = C.orange;
+      const quiet = !l.change || /^no change/i.test(l.change);
+      body = `<span class="row small"><i class="status" style="background:${statusColor(status)}"></i>
+          <span class="${group === 'needs you' ? 'o' : group === 'working' ? 'g' : 'muted'}">${group}</span>
+          <span class="grow"></span>${now ? `<span class="muted">${ago(now.lastActivity)}</span>` : '<span class="p">gone</span>'}</span>
+        <span class="y clamp2" style="font-size:21px;font-weight:700">${esc(l.session)}</span>
+        <span class="report-text" style="color:${l.needsYou ? C.orange : C.fg};-webkit-line-clamp:4">${esc(l.text)}</span>
+        ${l.change ? `<span class="small" style="color:${quiet ? C.cm : C.cyan}"><span class="label">since last</span> ${esc(l.change)}</span>` : ''}
+        ${l.answer ? `<span class="answer"><span class="label">in its words</span><span class="report-text small muted" style="-webkit-line-clamp:${l.change ? 5 : 7}">${esc(l.answer)}</span></span>` : ''}`;
+    }
+    const dots = Array.from({ length: n }, (_, i) => {
+      const color = i === card ? C.pink : i > 0 && r.lines[i - 1].needsYou ? C.orange : '#75715e';
+      return `<i class="dot" style="background:${color};${i === card ? 'width:20px;border-radius:4px' : ''}"></i>`;
+    }).join('');
+    return `${header(`status · ${card + 1}/${n}`, C.pink)}
+    <main style="gap:10px">
+      <button class="card report-card" data-f="card" data-default style="border-color:${edge}">${body}</button>
+      <div class="row" style="justify-content:space-between">
+        <span class="row" style="gap:5px;flex-wrap:wrap;min-width:0">${dots}</span>
+        ${btn('recheck', checking ? 'checking…' : 'check again', { icon: 'pulse', cls: 'chip' })}
+      </div>
     </main>
-    ${footer('swipe to scroll · pinch a session to open it')}`;
+    ${footer(`<span>← → swipe${waiting ? ` · <span class="o">${waiting} need you</span>` : ''} · ${card ? 'pinch to open this session' : 'pinch to read in full'}</span>`)}`;
+  },
+  key(e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return false;
+    const r = store.report;
+    if (!r) return false;
+    const next = Math.max(0, Math.min(r.lines.length, card + (e.key === 'ArrowRight' ? 1 : -1)));
+    if (next !== card) {
+      card = next;
+      store.emit();
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-f="card"]')?.focus());
+    }
+    return true;
   },
   mount(root) {
-    onEach(root, 'rl:', (id) => (store.state?.sessions.some((x) => x.id === id) ? go('session', { id }) : localNotify('that session is gone')));
-    on(root, 'overview', () => {
+    on(root, 'card', () => {
       const r = store.report;
-      if (r) go('message', { title: 'how it\'s going', role: 'claude', at: r.at, text: r.headline });
+      if (!r) return;
+      if (card === 0) return go('message', { title: "how it's going", role: 'claude', at: r.at, text: r.headline });
+      const l = r.lines[card - 1];
+      if (store.state?.sessions.some((x) => x.id === l.id)) go('session', { id: l.id });
+      else localNotify('that session is gone');
     });
     on(root, 'recheck', () => {
       checking = true;

@@ -3,7 +3,7 @@ import type { SessionInfo, StatusReport } from '../../shared/protocol.ts';
 import { claudeEnv, config } from './config.ts';
 import { state } from './hub.ts';
 import { load, save } from './store.ts';
-import { sdkTargetOf } from './sessions.ts';
+import { askInChat, sdkTargetOf } from './sessions.ts';
 
 /**
  * "How's everything going?": a short overview plus a summary of EVERY session, ordered
@@ -55,6 +55,7 @@ export async function statusReport(sessions: SessionInfo[]): Promise<StatusRepor
         const t = out.lines.get(i + 1);
         if (t?.now) l.text = t.now.slice(0, 320);
         if (t?.since) l.change = t.since.slice(0, 200);
+        l.answer = answers.get(l.id);
       });
     } catch {
       /* keep the plain lines */
@@ -86,14 +87,18 @@ const agoWords = (ms: number) => {
 };
 
 const ASK =
-  'Status check from the user, who is reading on smart glasses. Answer from what you already know; ' +
+  'Status check from ClaudeProd (I am reading on my glasses). Answer from what you already know; ' +
   "don't use any tools and don't change anything. In 2-4 plain sentences, no markdown: what you're working on " +
   'and how far along it is, what is done, what is next, and anything blocking or needing the user.';
-const ASK_TIMEOUT_MS = 60_000;
+const ASK_TIMEOUT_MS = 90_000;
 const ASK_MAX = 8; // sessions asked per check (most recent first); older ones are summarized from their messages
 const ASK_PARALLEL = 4;
 
-/** Ask each recent session for its own status, in a fork that's never saved. Returns id → answer. */
+/**
+ * Ask each recent session for its own status. Idle sessions get the question as a real message in
+ * their chat (you'll see it, and the reply, there). Sessions that are busy or waiting on you are asked
+ * in a fork that's never saved, so their work isn't interrupted. Returns id → answer.
+ */
 async function askSessions(sessions: SessionInfo[]): Promise<Map<string, string>> {
   const day = Date.now() - 24 * 3600_000;
   const targets = sessions
@@ -109,7 +114,9 @@ async function askSessions(sessions: SessionInfo[]): Promise<Map<string, string>
   const worker = async () => {
     while (next < targets.length) {
       const t = targets[next++];
-      const text = await askOne(t.sdkId, t.cwd).catch((e) => {
+      const busy = ['starting', 'running', 'waiting'].includes(t.s.status);
+      const ask = busy ? askOne(t.sdkId, t.cwd) : askInChat(t.s.id, ASK, ASK_TIMEOUT_MS);
+      const text = await ask.catch((e) => {
         console.warn(`[status] couldn't ask ${t.s.name}:`, (e as Error).message);
         return '';
       });

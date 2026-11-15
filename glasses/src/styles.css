@@ -141,11 +141,9 @@ textarea:focus { outline: none; border-color: var(--pink); }
 .pattern { font-size: 34px; letter-spacing: 8px; color: var(--purple); margin: 14px 0; min-height: 44px; }
 .code { font-size: 26px; font-weight: 700; letter-spacing: 2px; }
 
-/* Spotify: cover with a volume ring, round controls, a row of covers */
-.np { display: flex; gap: 22px; align-items: center; padding: 6px 4px 0 10px; }
-.cover { border-radius: 10px; display: block; object-fit: cover; flex: none; }
-.ring { position: relative; flex: none; }
-.ring svg.r { position: absolute; inset: -10px; }
-.picks { display: flex; gap: 10px; justify-content: center; }
-.pick { padding: 0; border: 1.5px solid transparent; border-radius: 10px; background: none; cursor: pointer; }
-.pick:focus { border-color: var(--pink); outline: none; }
+/* Status cards: one session per card, ← → to swipe */
+.report-card { font: inherit; color: var(--fg); text-align: left; flex: 1; min-height: 0; width: 100%; cursor: pointer;
+  display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; overflow: hidden; }
+.report-card .label { display: inline; margin: 0 6px 0 0; }
+.report-text { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.answer { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid #3e3d32; padding-top: 10px; }

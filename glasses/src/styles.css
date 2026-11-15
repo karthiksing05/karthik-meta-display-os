@@ -133,3 +133,12 @@ textarea:focus { outline: none; border-color: var(--pink); }
 .ghost { position: absolute; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; }
 .pattern { font-size: 34px; letter-spacing: 8px; color: var(--purple); margin: 14px 0; min-height: 44px; }
 .code { font-size: 26px; font-weight: 700; letter-spacing: 2px; }
+
+/* Spotify: cover with a volume ring, round controls, a row of covers */
+.np { display: flex; gap: 16px; align-items: center; }
+.cover { border-radius: 10px; display: block; object-fit: cover; flex: none; }
+.ring { position: relative; flex: none; }
+.ring svg.r { position: absolute; inset: -10px; }
+.picks { display: flex; gap: 8px; }
+.pick { padding: 0; border: 1.5px solid transparent; border-radius: 10px; background: none; cursor: pointer; }
+.pick:focus { border-color: var(--pink); outline: none; }

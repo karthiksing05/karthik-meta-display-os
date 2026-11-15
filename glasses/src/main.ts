@@ -7,6 +7,7 @@ import './screens/home.ts';
 import './screens/claude.ts';
 import './screens/compose.ts';
 import './screens/settings.ts';
+import './screens/spotify.ts';
 import './screens/twofa.ts';
 import './screens/lock.ts';
 

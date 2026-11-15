@@ -78,6 +78,26 @@ export interface Settings {
   learnedRules: string[];
 }
 
+/** Spotify: what's playing (polled from the Web API on the relay). */
+export interface Track {
+  title: string;
+  artist: string;
+  album: string;
+  art: string | null;
+  durationMs: number;
+  progressMs: number;
+  playing: boolean;
+  volume: number | null;
+  device: string | null;
+}
+
+/** A recently played album or playlist, to start with one pinch. */
+export interface Pick {
+  uri: string;
+  title: string;
+  art: string | null;
+}
+
 export interface Integrations {
   claude: boolean;
   groq: boolean;
@@ -85,6 +105,8 @@ export interface Integrations {
   totp: boolean;
   /** The whole app is behind a pattern/password (APP_PATTERN / APP_PASSWORD). */
   appLock: boolean;
+  /** Spotify signed in (once, at {PUBLIC_URL}/spotify/login?k=<SHELL_TOKEN>). */
+  spotify: boolean;
   demo: boolean;
 }
 
@@ -106,6 +128,8 @@ export interface ShellState {
   serverTime: number;
   /** The Mac the relay runs on: battery and Wi-Fi (polled every 30 s). */
   host: HostInfo;
+  track: Track | null;
+  picks: Pick[];
   /** Changes when the glasses app is rebuilt; the lens reloads itself to pick up the new version. */
   build: string;
 }
@@ -152,6 +176,7 @@ export type ClientMsg =
   | { t: 'ask'; target: 'all' | string; text: string }
   | { t: 'status.check' }
   | { t: 'dictation.clean'; reqId: string; text: string; context?: string }
+  | { t: 'spotify'; action: 'play' | 'pause' | 'next' | 'prev' | 'volume' | 'playUri'; value?: number | string }
   | { t: 'settings.set'; patch: Partial<Settings> }
   | { t: 'rules.clear' }
   /** 2FA: unlock with the swipe pattern; codes go only to this connection. */

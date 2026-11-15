@@ -7,7 +7,6 @@ import type { Approval, Question, SessionInfo } from '../../../shared/protocol.t
 
 // ---------------- Claude hub ----------------
 // One big "how's everything going?" button, the question inbox, and an ask bar.
-let askTarget: 'all' | string = 'all';
 let checking = false;
 /** Which inline reply boxes are open: 'ask' on the hub, the session id on a session / conversation. */
 const open = new Set<string>();
@@ -33,14 +32,7 @@ export function hubBody(nav: string, label = '') {
     const approvals = s?.approvals ?? [];
     const questions = s?.questions ?? [];
     const r = store.report;
-    const targetName = askTarget === 'all' ? 'active sessions' : sessions.find((x) => x.id === askTarget)?.name ?? 'active sessions';
 
-    const reportCard = r
-      ? `<button class="item msg" data-f="report">
-          ${icon('pulse', 20, C.cyan)}<span class="grow"><span class="label">last check · ${agoText(r.at)} · ${r.lines.length} sessions</span>
-          <span class="clamp2" style="display:block">${esc(r.headline)}</span></span>
-        </button>`
-      : '';
 
     const q = questions[0];
     const qCard = q
@@ -61,28 +53,14 @@ export function hubBody(nav: string, label = '') {
       : '';
 
     return `${label}
-      ${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'primary big', icon: 'pulse', def: true })}
-      ${reportCard}
+      <div class="row" style="gap:8px">
+        ${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'primary big grow', icon: 'pulse', def: true })}
+        ${r ? btn('report', `last · ${agoText(r.at)}`, { cls: 'big' }) : ''}
+      </div>
       ${aCard}
       ${qCard}
-      ${nav}
-      ${
-        open.has('ask')
-          ? `<div class="label">ask ${esc(targetName)}</div>${composerBox('ask', targetName)}`
-          : `<div class="label">ask ${esc(targetName)}</div><div class="btns">
-        ${composerButtons('ask')}
-        ${btn('target', 'who ▾', { cls: 'chip' })}
-      </div>`
-      }
-      <div class="label">quick send → ${esc(targetName)}</div>
-      <div class="btns">${(s?.phrases ?? []).map((p, i) => btn(`ph:${i}`, esc(p.label), { cls: 'chip' })).join('')}</div>`;
+      ${nav}`;
   }
-}
-
-/** Back closes the ask box if it's open. */
-export function hubKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && open.has('ask')) return clearComposer('ask'), toggle('ask', false), true;
-  return false;
 }
 
 export function hubMount(root: HTMLElement) {
@@ -93,27 +71,6 @@ export function hubMount(root: HTMLElement) {
     on(root, 'approvals', () => go('approval'));
     on(root, 'sessions', () => go('sessions'));
     on(root, 'new', () => go('newSession'));
-    on(root, 'target', () => {
-      const ids = ['all', ...(s?.sessions.filter((x) => x.status !== 'stopped').map((x) => x.id) ?? [])];
-      askTarget = ids[(ids.indexOf(askTarget) + 1) % ids.length] ?? 'all';
-      store.emit();
-    });
-    mountComposer(
-      root,
-      'ask',
-      (text) => {
-        send({ t: 'ask', target: askTarget, text });
-        localNotify(`sent → ${targetName()}`);
-      },
-      () => toggle('ask', true),
-      () => toggle('ask', false),
-    );
-    onEach(root, 'ph:', (i) => {
-      const p = s?.phrases[Number(i)];
-      if (!p) return;
-      send({ t: 'ask', target: askTarget, text: p.text });
-      localNotify(`sent: ${p.label} → ${targetName()}`);
-    });
     on(root, 'chat', () => go('compose', { kind: 'new', repo: '', title: 'chat with claude' }));
     const q = s?.questions[0];
     if (q) {
@@ -138,13 +95,9 @@ register('claude', {
     </main>
     ${footer('pinch = select · who ▾ picks who you ask')}`;
   },
-  key: hubKey,
   mount: hubMount,
 });
 
-function targetName() {
-  return askTarget === 'all' ? 'active sessions' : store.state?.sessions.find((x) => x.id === askTarget)?.name ?? 'active sessions';
-}
 
 // Stop the "checking…" label when the report lands.
 store.on(() => {

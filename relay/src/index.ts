@@ -19,6 +19,7 @@ import { handleHook, seedExternal } from './external.ts';
 import { notePid, startDeskWatch } from './desk.ts';
 import { issuePass, lockMethod, passOk, tryAppUnlock } from './lock.ts';
 import { codes, totpEnabled, tryUnlock, vaultNow, type TotpAccount } from './totp.ts';
+import { loadPicks, pollSpotify, spotifyAction, spotifyCallback, spotifyConfigured, spotifyLogin } from './spotify.ts';
 
 // ---------- auth ----------
 function tokenOk(t: string | null | undefined): boolean {
@@ -110,6 +111,18 @@ const server = http.createServer(async (req, res) => {
       const link = installLink(config.publicUrl || `https://${req.headers.host}`, config.token);
       const qr = await QRCode.toDataURL(link, { margin: 2, width: 360 });
       return res.writeHead(200, { 'content-type': 'text/html' }).end(installPage(link, qr));
+    }
+
+    // Spotify sign-in, once: open {PUBLIC_URL}/spotify/login?k=<SHELL_TOKEN> in a browser.
+    if (url.pathname === '/spotify/login') {
+      if (!tokenOk(k)) return res.writeHead(401).end('Add ?k=<SHELL_TOKEN>');
+      if (!spotifyConfigured()) return res.writeHead(500).end('Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET in relay/.env');
+      return spotifyLogin(req, res);
+    }
+    if (url.pathname === '/spotify/callback') {
+      await spotifyCallback(url, res);
+      await Promise.all([pollSpotify(), loadPicks()]);
+      return;
     }
 
     if (url.pathname.startsWith('/api/')) return res.writeHead(404).end();
@@ -216,6 +229,8 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
     case 'totp.lock':
       unlocked.delete(ws);
       return reply(ws, { t: 'totp.locked' });
+    case 'spotify':
+      return config.demo ? undefined : spotifyAction(msg.action, msg.value);
     case 'dictation.clean':
       return reply(ws, {
         t: 'dictation.cleaned',
@@ -304,6 +319,10 @@ if (config.demo) {
   restoreSessions();
   seedExternal();
   startDeskWatch();
+  pollSpotify();
+  loadPicks();
+  setInterval(pollSpotify, 5_000); // does nothing until you've signed in to Spotify
+  setInterval(loadPicks, 10 * 60_000);
   setInterval(seedExternal, 2 * 60_000);
   state.integrations.totp = totpEnabled();
   setInterval(() => {

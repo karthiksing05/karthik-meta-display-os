@@ -123,7 +123,9 @@ export function startDemo() {
       at: now() - 5 * min,
     },
   ];
-  Object.assign(state.integrations, { claude: true, groq: true, totp: true, appLock: false, demo: true });
+  Object.assign(state.integrations, { claude: true, groq: true, totp: true, appLock: false, spotify: true, demo: true });
+  state.track = { title: 'Midnight City', artist: 'M83', album: "Hurry Up, We're Dreaming", art: null, durationMs: 243_000, progressMs: 81_000, playing: true, volume: 60, device: 'iPhone' };
+  state.picks = ['Focus mix', 'Lo-fi beats', 'Daily Mix 1', 'Discover Weekly', 'Release Radar'].map((title, i) => ({ uri: `spotify:playlist:demo${i}`, title, art: null }));
   hub.changed();
 
   // Make the running session tick so the lens has something alive to show.

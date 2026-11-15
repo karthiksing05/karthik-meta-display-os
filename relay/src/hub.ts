@@ -46,10 +46,13 @@ export const state: ShellState = {
     groq: Boolean(config.groqKey),
     totp: false,
     appLock: lockEnabled(),
+    spotify: false,
     demo: config.demo,
   },
   serverTime: Date.now(),
   host: { battery: null, charging: false, wifi: null },
+  track: null,
+  picks: [],
   build: buildId(),
 };
 

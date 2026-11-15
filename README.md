@@ -14,7 +14,7 @@ Watch every Claude Code session on your Mac from your glasses: the ones it start
 already running in your terminal, VS Code or Remote Control. Approve a command with a swipe,
 answer Claude's questions, read what it said, and reply by voice or with a one-pinch phrase. Ask
 **"how's everything going?"** for a one-line summary of every session, with the ones waiting on
-you first. Music, maps, messages and photos are left to the glasses' own apps.
+you first, and control Spotify. Maps, messages and photos are left to the glasses' own apps.
 
 It's two parts: a 600×600 **web app** for the glasses, and a **relay** on your Mac that runs the
 sessions and serves the app over HTTPS. The **ClaudeProd menu bar app** sets both up and runs them.
@@ -90,6 +90,7 @@ the pattern and pinch. 5 wrong tries lock it for 15 minutes.
 
 | | How |
 |---|---|
+| Spotify (the music tile) | make an app at developer.spotify.com/dashboard with redirect URI `<your address>/spotify/callback`, put its ID and secret in `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`, then sign in once at `<your address>/spotify/login?k=<SHELL_TOKEN>`. Premium is needed to control playback |
 | Cleaner dictated replies | a free key from console.groq.com → `GROQ_API_KEY` in `relay/.env` |
 | 2FA codes on the lens | read [docs/TWO_FACTOR.md](docs/TWO_FACTOR.md), then `npm run 2fa -- --image <export-QR screenshot>` |
 | Repos for new sessions | `REPOS_DIR` in `relay/.env` (the folder that holds your git repos, searched 3 levels deep) |

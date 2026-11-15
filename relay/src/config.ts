@@ -43,6 +43,10 @@ export const config = {
   totpPassphrase: env('TOTP_PASSPHRASE'),
   totpUnlock: env('TOTP_UNLOCK').toLowerCase().split(/[\s,]+/).filter(Boolean),
   groqModel: env('GROQ_MODEL', 'openai/gpt-oss-20b'),
+  spotifyId: env('SPOTIFY_CLIENT_ID'),
+  spotifySecret: env('SPOTIFY_CLIENT_SECRET'),
+  /** Defaults to {PUBLIC_URL}/spotify/callback; it must be listed in your Spotify app's settings. */
+  spotifyRedirect: env('SPOTIFY_REDIRECT_URI') || (env('PUBLIC_URL') ? `${env('PUBLIC_URL').replace(/\/$/, '')}/spotify/callback` : ''),
 
   /** Built glasses app, served at / so one HTTPS URL covers everything. */
   glassesDist: path.resolve(here, '../../glasses/dist'),

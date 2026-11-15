@@ -100,7 +100,7 @@ register('claude', {
         ${btn('chat', 'chat', { icon: 'ask' })}
       </div>`)}
     </main>
-    ${footer('pinch = select · who ▾ picks who you ask')}`;
+    ${footer('pinch to select · back to return')}`;
   },
   mount: hubMount,
 });
@@ -350,7 +350,7 @@ register('transcript', {
       .join('');
     return `${header(x.name, C.yellow)}
     <main class="scroll"><div class="list">${items || '<div class="muted center">Nothing yet.</div>'}</div>
-      ${replyBox(x, 'dictate')}</main>
+      ${replying ? replyBox(x, '') : `<div class="btns">${replyBox(x, 'dictate')}</div>`}</main>
     ${footer(replying ? 'pinch the box to talk · back closes it' : 'swipe ↑ for older · pinch a message to read it all')}`;
   },
   key: (e, { id }) => closeReplyKey(e, id),

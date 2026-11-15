@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config } from './config.ts';
 import { hub, state } from './hub.ts';
 import { load, save } from './store.ts';
@@ -23,29 +23,47 @@ interface Tokens {
   expires?: number;
 }
 let tokens = load<Tokens | null>('spotify', null);
-let oauthState = '';
+
+/**
+ * The OAuth `state` is signed rather than kept in memory, so a relay restart between "log in" and
+ * Spotify's callback (every .env save restarts it) doesn't break the sign-in. Valid for 15 minutes.
+ */
+const sign = (v: string) => createHmac('sha256', `spotify-state:${config.token}:${config.spotifySecret}`).update(v).digest('hex').slice(0, 32);
+const newState = () => {
+  const v = `${Date.now()}.${randomBytes(6).toString('hex')}`;
+  return `${v}.${sign(v)}`;
+};
+function stateOk(s: string | null) {
+  const m = s?.match(/^(\d+\.[0-9a-f]+)\.([0-9a-f]{32})$/);
+  if (!m) return false;
+  const want = Buffer.from(sign(m[1]));
+  const got = Buffer.from(m[2]);
+  return want.length === got.length && timingSafeEqual(want, got) && Date.now() - Number(m[1].split('.')[0]) < 15 * 60_000;
+}
 
 export const spotifyConfigured = () => Boolean(config.spotifyId && config.spotifySecret && config.spotifyRedirect);
 
 export function spotifyLogin(_req: IncomingMessage, res: ServerResponse) {
-  oauthState = randomBytes(12).toString('hex');
   const u = new URL('https://accounts.spotify.com/authorize');
   u.search = new URLSearchParams({
     client_id: config.spotifyId,
     response_type: 'code',
     redirect_uri: config.spotifyRedirect,
     scope: SCOPES,
-    state: oauthState,
+    state: newState(),
   }).toString();
   res.writeHead(302, { location: u.toString() }).end();
 }
 
 export async function spotifyCallback(url: URL, res: ServerResponse) {
-  if (!oauthState || url.searchParams.get('state') !== oauthState) {
-    res.writeHead(400).end('State mismatch. Start again from /spotify/login.');
+  if (url.searchParams.get('error')) {
+    res.writeHead(400).end(`Spotify said: ${url.searchParams.get('error')}. Start again from /spotify/login?k=<SHELL_TOKEN>.`);
     return;
   }
-  oauthState = '';
+  if (!stateOk(url.searchParams.get('state'))) {
+    res.writeHead(400).end('This sign-in link expired or is from another setup. Start again from /spotify/login?k=<SHELL_TOKEN>.');
+    return;
+  }
   const t = await tokenRequest({
     grant_type: 'authorization_code',
     code: url.searchParams.get('code') ?? '',

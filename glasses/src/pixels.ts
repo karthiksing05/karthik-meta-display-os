@@ -4,7 +4,7 @@ import { C } from './ui.ts';
  * Pixel band on the home screen: mountains at sunset, seen from a slowly moving train, with a river
  * rushing along the bottom (white and grey foam, the odd rainbow fleck).
  *
- * The scenery is pixel art (a 144×34 grid of 3 px dots), but it moves smoothly: each range is drawn
+ * The scenery is pixel art (a 143×34 grid of 3 px dots), but it moves smoothly: each range is drawn
  * once into its own strip and slid sideways by fractional pixels, the near foothills fastest and the
  * snowy far peaks slowest (parallax). The sun sits still behind them, its stripes sinking slowly, and
  * the stars twinkle. Nearer ranges hide whatever is behind them, so the dithered slopes stay airy on
@@ -13,7 +13,7 @@ import { C } from './ui.ts';
  * It moves for 30 s after you wake the lens or press a key, then holds still to save battery; the
  * next wake carries on from where it stopped.
  */
-const COLS = 144;
+const COLS = 143; // 571 px: fits the 600 px lens inside the 14 px margins
 const ROWS = 34;
 const PITCH = 4; // px per grid cell
 const DOT = 3; // px of it that's lit (the rest is the gap that makes it look like pixels)

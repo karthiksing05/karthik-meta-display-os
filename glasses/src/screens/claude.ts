@@ -26,6 +26,24 @@ function checkStatus() {
  * whatever's waiting on you, then `nav` (the caller's own buttons or tiles), then the ask bar
  * (dictate / handwrite, and who to ask) and the quick-send phrases.
  */
+/**
+ * "How's everything going?", alive: a heartbeat trace runs through the icon and a sheen sweeps across
+ * the button; while a check runs both speed up and the label counts the sessions being asked.
+ * Phases come from the clock, so re-renders don't restart them.
+ */
+function statusButton(key = 'status', idle = "how's everything going?", cls = 'primary big main-action') {
+  const beat = checking ? 700 : 1800;
+  const asking = (store.state?.sessions ?? []).filter((x) => x.status !== 'stopped').length;
+  const label = checking ? (asking ? `asking ${asking} session${asking === 1 ? '' : 's'}` : 'checking') : idle;
+  return `<button class="btn ${cls} status-btn${checking ? ' checking' : ''}" data-f="${key}" ${key === 'status' ? 'data-default' : ''}
+      style="--beat:-${Date.now() % beat}ms;--sheen:-${Date.now() % 3200}ms">
+    <svg class="ekg" width="40" height="22" viewBox="0 0 44 22" aria-hidden="true">
+      <path class="base" d="M0 11h10l3-7 5 14 4-10 3 3h19" pathLength="100"/>
+      <path class="trace" d="M0 11h10l3-7 5 14 4-10 3 3h19" pathLength="100"/>
+    </svg><span>${label}</span>${checking ? `<i class="dots">${`<b style="background:${C.pink};${phase(1200)}"></b>`.repeat(3)}</i>` : ''}
+  </button>`;
+}
+
 export function hubBody(nav: string, label = '', compact = false) {
   {
     const s = store.state;
@@ -61,7 +79,7 @@ export function hubBody(nav: string, label = '', compact = false) {
 
     return `${label}
       <div class="row" style="gap:8px">
-        ${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'primary big main-action', icon: 'pulse', def: true })}
+        ${statusButton()}
         ${r ? btn('report', `last · ${agoText(r.at)}`, { cls: 'big side' }) : ''}
       </div>
       ${aCard}
@@ -118,6 +136,7 @@ store.on(() => {
 // card to open that session; ↓ for "check again".
 let card = 0;
 let cardsFor = 0; // the report the cards were opened on; a new report starts again at the overview
+let swiped = { at: 0, dir: 1 }; // the last swipe, so the new card slides in from that side
 
 function groupOf(needsYou: boolean, status: string) {
   return needsYou ? 'needs you' : status === 'running' || status === 'starting' ? 'working' : status === 'stopped' ? 'earlier' : 'your turn';
@@ -167,10 +186,11 @@ register('report', {
     }).join('');
     return `${header(`status · ${card + 1}/${n}`, C.pink)}
     <main style="gap:10px">
-      <button class="card report-card" data-f="card" data-default style="border-color:${edge}">${body}</button>
+      <button class="card report-card${Date.now() - swiped.at < 400 ? (swiped.dir > 0 ? ' slide-r' : ' slide-l') : ''}" data-f="card" data-default
+        style="border-color:${edge};animation-delay:-${Math.min(400, Date.now() - swiped.at)}ms">${body}</button>
       <div class="row" style="justify-content:space-between">
         <span class="row" style="gap:5px;flex-wrap:wrap;min-width:0">${dots}</span>
-        ${btn('recheck', checking ? 'checking…' : 'check again', { icon: 'pulse', cls: 'chip' })}
+        ${statusButton('recheck', 'check again', 'chip')}
       </div>
     </main>
     ${footer(`<span>← → swipe${waiting ? ` · <span class="o">${waiting} need you</span>` : ''} · ${card ? 'pinch to open this session' : 'pinch to read in full'}</span>`)}`;
@@ -181,6 +201,7 @@ register('report', {
     if (!r) return false;
     const next = Math.max(0, Math.min(r.lines.length, card + (e.key === 'ArrowRight' ? 1 : -1)));
     if (next !== card) {
+      swiped = { at: Date.now(), dir: next > card ? 1 : -1 };
       card = next;
       store.emit();
       requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-f="card"]')?.focus());

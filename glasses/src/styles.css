@@ -187,3 +187,26 @@ textarea:focus { outline: none; border-color: var(--pink); }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
 .status.pulse { animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 currentColor; } 50% { box-shadow: 0 0 8px 2px currentColor; } }
+
+/* "How's everything going?": heartbeat trace + a sheen sweeping across; faster while checking */
+.status-btn { position: relative; overflow: hidden; }
+.status-btn::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 97, 136, .22) 50%, transparent 65%) 0 0 / 300% 100%;
+  animation: sheen 3.2s linear infinite; animation-delay: var(--sheen, 0ms); }
+.status-btn.checking::after { animation-duration: 1.2s; }
+@keyframes sheen { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+.ekg { flex: none; overflow: visible; }
+.ekg path { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.ekg .base { opacity: .22; }
+.ekg .trace { stroke-dasharray: 38 100; animation: ekg 1.8s linear infinite; animation-delay: var(--beat, 0ms);
+  filter: drop-shadow(0 0 3px currentColor); }
+.status-btn.checking .ekg .trace { animation-duration: .7s; }
+@keyframes ekg { from { stroke-dashoffset: 138; } to { stroke-dashoffset: 0; } }
+.status-btn .dots { margin-left: 2px; }
+
+/* Status cards slide in from the side you swiped toward */
+.report-card.slide-r { animation: slide-r .4s cubic-bezier(.2, .9, .3, 1) both; }
+.report-card.slide-l { animation: slide-l .4s cubic-bezier(.2, .9, .3, 1) both; }
+@keyframes slide-r { from { transform: translateX(60px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slide-l { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+.btn.chip.status-btn .ekg { width: 30px; height: 16px; }

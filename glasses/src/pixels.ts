@@ -2,7 +2,7 @@ import { C } from './ui.ts';
 
 /**
  * Pixel band on the home screen: mountains at sunset, seen from a slowly moving train, with a river
- * rushing along the bottom (white and grey foam, the odd rainbow fleck).
+ * rushing along the bottom (streaks of white and grey foam, the odd rainbow streak).
  *
  * The scenery is pixel art (a 143×34 grid of 3 px dots), but it moves smoothly: each range is drawn
  * once into its own strip and slid sideways by fractional pixels, the near foothills fastest and the
@@ -111,7 +111,17 @@ function drawSun() {
   return c;
 }
 
-/** One row of river as pixel art: streaks of white and grey foam, dark water between, rare rainbow flecks. */
+/** `#rrggbb` + alpha → rgba(), for gradient stops. */
+const rgba = (hex: string, a: number) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+};
+
+/**
+ * One row of river: long streaks of foam rushing left, each one continuous (no dot gaps along it),
+ * brightest at its head and thinning toward its tail. Mostly white and grey; about one in eight
+ * is a rainbow streak, its colours running along its length.
+ */
 function drawRiverRow(row: number) {
   const c = document.createElement('canvas');
   c.width = RIVER_CELLS * PITCH;
@@ -121,30 +131,32 @@ function drawRiverRow(row: number) {
   let n = row * 1000;
   const rnd = () => hash(++n);
   while (x < RIVER_CELLS) {
-    // a streak of foam…
-    const len = 2 + Math.floor(rnd() * 7);
-    const tone = rnd();
-    for (let k = 0; k < len && x < RIVER_CELLS; k++, x++) {
-      const fleck = rnd() < 0.035;
-      const [color, alpha] = fleck
-        ? [RAINBOW[Math.floor(rnd() * RAINBOW.length)], 0.95]
-        : tone < 0.4
-          ? [C.fg, 0.9 - k * 0.06] // bright white, thinning toward its tail
-          : tone < 0.75
-            ? [C.fg, 0.5]
-            : [C.cm, 0.55];
-      ctx.globalAlpha = Math.max(0.25, alpha);
-      ctx.fillStyle = color;
-      ctx.fillRect(x * PITCH, 0, DOT, DOT);
+    const len = Math.min(RIVER_CELLS - x, 4 + Math.floor(rnd() * 15));
+    const x0 = x * PITCH;
+    const x1 = (x + len) * PITCH - (PITCH - DOT);
+    const g = ctx.createLinearGradient(x0, 0, x1, 0); // head on the left: the water runs left
+    const kind = rnd();
+    if (kind < 0.13) {
+      // rainbow, starting from a random colour so neighbouring streaks differ
+      const start = Math.floor(rnd() * RAINBOW.length);
+      const stops = RAINBOW.length;
+      for (let i = 0; i < stops; i++) g.addColorStop(i / (stops - 1), rgba(RAINBOW[(start + i) % stops], 0.95 - (0.55 * i) / (stops - 1)));
+    } else {
+      const [col, head] = kind < 0.6 ? [C.fg, 0.95] : kind < 0.85 ? [C.fg, 0.6] : [C.cm, 0.6];
+      g.addColorStop(0, rgba(col, head));
+      g.addColorStop(0.5, rgba(col, head * 0.7));
+      g.addColorStop(1, rgba(col, head * 0.12));
     }
-    // …then a little dark water
-    const gap = 1 + Math.floor(rnd() * 4);
-    for (let k = 0; k < gap && x < RIVER_CELLS; k++, x++) {
-      if (rnd() < 0.5) continue;
-      ctx.globalAlpha = 0.16;
-      ctx.fillStyle = C.cm;
-      ctx.fillRect(x * PITCH, 0, DOT, DOT);
+    ctx.fillStyle = g;
+    ctx.fillRect(x0, 0, x1 - x0, DOT);
+    x += len;
+    // dark water between streaks, with now and then a faint ripple
+    const gap = 1 + Math.floor(rnd() * 5);
+    if (gap > 2 && rnd() < 0.5) {
+      ctx.fillStyle = rgba(C.cm, 0.18);
+      ctx.fillRect((x + 1) * PITCH, 0, (gap - 2) * PITCH - (PITCH - DOT), DOT);
     }
+    x += gap;
   }
   return c;
 }

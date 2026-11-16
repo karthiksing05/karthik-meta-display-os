@@ -33,7 +33,7 @@ register('home', {
         ${tile('newSession', 'plus', C.green, 'new', 'in a repo')}
         ${tile('chat', 'ask', C.orange, 'chat', 'no repo')}
         ${tile('notes', 'note', C.cyan, 'notes', 'dictate a change')}
-        ${tile('twofa', 'key', C.purple, '2fa', s?.integrations.totp || s?.integrations.demo ? 'locked' : 'off')}
+        ${tile('twofa', 'key', C.purple, '2fa', !s || !store.connected ? '—' : s.integrations.totp || s.integrations.demo ? 'locked' : 'off')}
         ${tile('settings', 'gear', C.purple, 'settings', store.connected ? `mac ${h?.battery ?? '—'}%${h?.charging ? '⚡' : ''}` : '<span class="p">offline</span>')}
       </div>`;
 

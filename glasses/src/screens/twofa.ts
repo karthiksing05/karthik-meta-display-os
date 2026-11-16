@@ -42,7 +42,11 @@ function startTicker() {
 
 register('twofa', {
   render() {
-    if (!store.state?.integrations.totp) {
+    // No word from the relay yet (offline, or it's restarting): say so, rather than "not set up".
+    if (!store.state || !store.connected) {
+      return `${header('2fa codes', C.purple)}<main class="center"><div>${icon('wifioff', 40, C.orange)}<div>Can't reach your Mac.</div><div class="small muted">Codes come from the relay. It reconnects by itself; try again in a moment.</div></div></main>${footer('back')}`;
+    }
+    if (!store.state.integrations.totp) {
       return `${header('2fa codes', C.purple)}<main class="center"><div>${icon('ask', 40, C.purple)}<div>2FA isn't set up.</div><div class="small muted">Opt-in. Read docs/TWO_FACTOR.md first.</div></div></main>${footer('back')}`;
     }
     if (!s.codes.length) {

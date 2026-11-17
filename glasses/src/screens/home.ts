@@ -19,17 +19,17 @@ register('home', {
 
     // Two rows of three tiles: icon and title, then one short line.
     const tile = (key: string, ic: string, color: string, title: string, sub: string, wide = false) =>
-      `<button class="tile${wide ? ' wide' : ''}" data-f="tile:${key}" style="height:62px;padding:8px 10px;gap:4px;min-width:0">
+      `<button class="tile${wide ? ' wide' : ''}" data-f="tile:${key}" style="height:74px;padding:8px 10px;gap:4px;min-width:0">
         <span class="t" style="color:${color};gap:8px">${icon(ic, 19)}<span class="ellipsis">${title}</span></span>
         <span class="s ellipsis" style="font-size:13px">${sub}</span>
       </button>`;
 
     const label = `<div class="row" style="gap:8px">${icon('claude', 18, C.orange)}<span style="color:${C.orange};font-weight:700">claude</span>
-      <span class="small"><span class="g">${running} running</span> · <span class="${asks ? 'o' : 'muted'}">${asks} waiting on you</span></span></div>`;
+      <span class="small"><b class="n g">${running}</b> <span class="g">running</span> · <b class="n ${asks ? 'o' : 'muted'}">${asks}</b> <span class="${asks ? 'o' : 'muted'}">waiting on you</span></span></div>`;
 
     const h = s?.host;
     const tiles = `<div class="tiles" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
-        ${tile('sessions', 'sessions', C.yellow, 'sessions', `<span class="v">${sessions.length}</span> · ${running} running`)}
+        ${tile('sessions', 'sessions', C.yellow, 'sessions', `<b class="n g">${running}</b> <span class="g">running</span> <span class="muted">of</span> <span class="v">${sessions.length}</span>`)}
         ${tile('newSession', 'plus', C.green, 'new', 'in a repo')}
         ${tile('chat', 'ask', C.orange, 'chat', 'no repo')}
         ${tile('notes', 'note', C.cyan, 'notes', 'dictate a change')}

@@ -83,7 +83,9 @@ const server = http.createServer(async (req, res) => {
         return res.writeHead(400).end('{}');
       }
       notePid(String(body?.session_id ?? ''), Number(req.headers['x-claude-pid']));
-      const out = config.demo ? {} : await handleHook(body);
+      // x-claude-host: set by the hook script on machines you SSH into (npm run hooks -- remote).
+      const host = String(req.headers['x-claude-host'] ?? '').replace(/[^\w.-]/g, '').slice(0, 40);
+      const out = config.demo ? {} : await handleHook(host ? { ...body, host } : body);
       return res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(out));
     }
 

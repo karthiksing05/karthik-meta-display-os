@@ -70,6 +70,25 @@ npm run hooks -- install     # adds hooks to ~/.claude/settings.json (backup kep
 - Pause and stop stay with wherever the session runs. The hook script does nothing when the relay
   is down, and the relay's own sessions skip it.
 
+### Sessions on machines you SSH into
+
+Claude Code running on another machine (over SSH, including Remote Control started there) only shows
+up if that machine has the hooks too. From your Mac:
+
+```bash
+npm run hooks -- remote user@host          # `remote-remove user@host` undoes it
+```
+
+It installs the hook script on that machine over SSH (needs `curl` and `python3` there) and merges
+the hooks into its `~/.claude/settings.json` (backup kept). Events go to the relay's `PUBLIC_URL`
+(the same tunnel the glasses use), so it works from anywhere, with no SSH tunnel to keep open.
+The script holds your `SHELL_TOKEN` (file mode 700), so only do this on machines you trust.
+
+On the lens these sessions are tagged with the machine's hostname. Status, approvals, questions and
+replies while it's working all work. A reply to an **idle** one waits until it next finishes a step
+there: the relay can't resume a conversation stored on another machine. "How's everything going?"
+summarizes them from their messages instead of asking them, and they have no context gauge.
+
 ### Keeping your laptop in sync
 
 An open VS Code tab or terminal never re-reads its conversation from disk, so it can't show turns the

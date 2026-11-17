@@ -47,6 +47,8 @@ export interface SessionInfo {
   notes?: boolean;
   /** Open on the laptop right now (a VS Code tab or a terminal). Those windows don't refresh on their own. */
   desk?: 'vscode' | 'terminal';
+  /** Runs on another machine you SSH into (its hostname): hooks installed there with `npm run hooks -- remote`. */
+  host?: string;
 }
 
 export interface Approval {

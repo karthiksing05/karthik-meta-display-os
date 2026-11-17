@@ -170,6 +170,8 @@ interface HookIn {
   stop_hook_active?: boolean;
   source?: string;
   reason?: string;
+  /** Another machine (over SSH): its files aren't on this Mac. */
+  host?: string;
 }
 
 /** Handle one hook event; the returned object is the hook's JSON output ({} = no decision). */
@@ -183,7 +185,7 @@ export async function handleHook(h: HookIn): Promise<object> {
     ext.set(h.session_id, { outbox: [], info: { ...back, source: 'external', activity: 'picked up again elsewhere' } });
   } else if (isOwn(h.session_id, h.cwd)) return {};
   const cwd = h.cwd ?? ext.get(h.session_id)?.info.cwd ?? '';
-  const e = upsert(h.session_id, cwd);
+  const e = upsert(h.session_id, cwd, h.host ? { host: h.host } : {});
   if (h.session_title) e.info.name = firstLine(h.session_title, 48);
 
   try {
@@ -227,7 +229,7 @@ export async function handleHook(h: HookIn): Promise<object> {
         return {};
 
       case 'Stop': {
-        e.info.context = contextFromFile(h.transcript_path) ?? e.info.context;
+        if (!h.host) e.info.context = contextFromFile(h.transcript_path) ?? e.info.context;
         if (h.last_assistant_message) {
           log(e, 'claude', h.last_assistant_message);
           e.info.activity = firstLine(h.last_assistant_message);
@@ -346,6 +348,13 @@ export function externalSend(sdkId: string, text: string) {
   if (e.info.status === 'running' || e.info.status === 'waiting') {
     e.outbox.push(text);
     log(e, 'you', `${text}  (queued: delivered when it finishes this step)`);
+    publish();
+    return;
+  }
+  if (e.info.host) {
+    // On another machine: the relay can't resume it here, so it waits for the session's next stop.
+    e.outbox.push(text);
+    log(e, 'you', `${text}  (queued: it's idle on ${e.info.host}; delivered when it next finishes a step there)`);
     publish();
     return;
   }

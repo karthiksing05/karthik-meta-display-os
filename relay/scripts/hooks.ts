@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 /**
  * Show every Claude Code session on this Mac in Claude Shell (terminal, VS Code, Remote Control).
@@ -8,6 +9,8 @@ import path from 'node:path';
  *   npm run hooks -w relay -- install    add the Claude Shell hooks to ~/.claude/settings.json
  *   npm run hooks -w relay -- remove     take them out again
  *   npm run hooks -w relay -- status
+ *   npm run hooks -w relay -- remote user@host          same, on a machine you SSH into
+ *   npm run hooks -w relay -- remote-remove user@host
  *
  * The hooks run ~/.claude-shell/hook.sh, which POSTs each event to the relay on localhost.
  * When the relay isn't running it does nothing, silently. The relay's own sessions skip it.
@@ -82,8 +85,78 @@ function strip(s: Settings): Settings {
 
 const installed = (s: Settings) => Object.keys(EVENTS).filter((ev) => s.hooks?.[ev]?.some((e) => e.hooks?.some((h) => String(h.command).includes(MARK))));
 
+/**
+ * Machines you SSH into: their hook script POSTs to the relay's public URL (the tunnel the glasses use)
+ * with the token baked in, and says which machine it is (x-claude-host). Settings are merged with
+ * python3 on that machine, the same way as here: our entries replaced, everyone else's kept, backup first.
+ */
+function remote(target: string, remove: boolean) {
+  const env = fs.existsSync(ENV_FILE) ? fs.readFileSync(ENV_FILE, 'utf8') : '';
+  const val = (k: string) => env.match(new RegExp(`^${k}=(.*)$`, 'm'))?.[1]?.trim() ?? '';
+  const token = val('SHELL_TOKEN');
+  const url = val('PUBLIC_URL').replace(/\/$/, '');
+  if (!remove && (!token || !url)) {
+    console.error('relay/.env needs SHELL_TOKEN and PUBLIC_URL (the address the glasses use). Run `npm run setup` first.');
+    process.exit(1);
+  }
+  if (!/^[\w.-]+$/.test(token) || !/^https:\/\/[\w.:-]+$/.test(url)) {
+    if (!remove) (console.error('SHELL_TOKEN or PUBLIC_URL has unexpected characters.'), process.exit(1));
+  }
+  const hook = `#!/bin/sh
+# ClaudeProd: forwards Claude Code hook events on this machine to your relay (${url}).
+# Installed from your Mac with: npm run hooks -- remote <this machine>   (undo: remote-remove)
+[ -n "$CLAUDE_SHELL_OWNED" ] && exit 0
+curl -sf -m "\${1:-3}" -X POST -H 'content-type: application/json' -H 'x-shell-token: ${token}' \\
+  -H "x-claude-host: $(hostname -s 2>/dev/null || hostname)" --data-binary @- '${url}/hooks' 2>/dev/null
+exit 0
+`;
+  const entries = Object.fromEntries(
+    Object.entries(EVENTS).map(([ev, [secs, timeout, matcher]]) => [ev, { secs, timeout, matcher: matcher ?? null }]),
+  );
+  const py = `
+import json, os
+p = os.path.expanduser('~/.claude/settings.json'); hook = os.path.expanduser('~/${'.claude-shell/hook.sh'}')
+MARK = '${MARK}'; NEW = json.loads(${JSON.stringify(JSON.stringify(entries))}); REMOVE = ${remove ? 'True' : 'False'}
+s = {}
+if os.path.exists(p):
+    raw = open(p).read()
+    s = json.loads(raw) if raw.strip() else {}
+    if not os.path.exists(p + '.bak-claude-shell'): open(p + '.bak-claude-shell', 'w').write(raw)
+h = s.get('hooks', {})
+for ev in list(h):
+    h[ev] = [dict(e, hooks=[x for x in e.get('hooks', []) if MARK not in str(x.get('command', ''))]) for e in h[ev]]
+    h[ev] = [e for e in h[ev] if e['hooks']]
+    if not h[ev]: del h[ev]
+if not REMOVE:
+    for ev, o in NEW.items():
+        e = {'hooks': [{'type': 'command', 'command': hook + ' ' + str(o['secs']), 'timeout': o['timeout']}]}
+        if o['matcher']: e['matcher'] = o['matcher']
+        h.setdefault(ev, []).append(e)
+if h: s['hooks'] = h
+else: s.pop('hooks', None)
+os.makedirs(os.path.dirname(p), exist_ok=True)
+open(p, 'w').write(json.dumps(s, indent=2) + '\\n')
+print('ClaudeProd hooks ' + ('removed' if REMOVE else 'installed') + ' in ' + p)
+`;
+  const sh = remove
+    ? `set -e\nrm -f ~/.claude-shell/hook.sh\npython3 - <<'PY'\n${py}\nPY\n`
+    : `set -e\ncommand -v curl >/dev/null || { echo 'curl is missing on this machine'; exit 1; }\ncommand -v python3 >/dev/null || { echo 'python3 is missing on this machine'; exit 1; }\n` +
+      `mkdir -p ~/.claude-shell && umask 077 && cat > ~/.claude-shell/hook.sh <<'HOOK'\n${hook}HOOK\nchmod 700 ~/.claude-shell/hook.sh\npython3 - <<'PY'\n${py}\nPY\n`;
+  const r = spawnSync('ssh', [target, 'sh -s'], { input: sh, stdio: ['pipe', 'inherit', 'inherit'] });
+  if (r.status !== 0) process.exit(r.status ?? 1);
+  if (!remove) {
+    console.log(`Sessions started on ${target} from now on show up on the lens, tagged with its hostname.`);
+    console.log('Already-open ones pick the hooks up when restarted. Replies to an idle one there are delivered');
+    console.log('when it next finishes a step (the relay can\'t resume a session that lives on another machine).');
+  }
+}
+
 const cmd = process.argv[2] ?? 'status';
-if (cmd === 'install') {
+if (cmd === 'remote' || cmd === 'remote-remove') {
+  const target = process.argv[3];
+  if (!target) (console.error(`usage: npm run hooks -- ${cmd} user@host`), process.exit(1));
+  remote(target, cmd === 'remote-remove');
+} else if (cmd === 'install') {
   if (!fs.existsSync(ENV_FILE)) {
     console.error('relay/.env is missing. Run `npm run setup` first.');
     process.exit(1);

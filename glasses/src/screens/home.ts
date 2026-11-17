@@ -25,11 +25,11 @@ register('home', {
       </button>`;
 
     const label = `<div class="row" style="gap:8px">${icon('claude', 18, C.orange)}<span style="color:${C.orange};font-weight:700">claude</span>
-      <span class="small"><b class="n g">${running}</b> <span class="g">running</span> · <b class="n ${asks ? 'o' : 'muted'}">${asks}</b> <span class="${asks ? 'o' : 'muted'}">waiting on you</span></span></div>`;
+      <span class="small"><b class="n v">${sessions.length}</b> <span class="v">sessions</span> · <b class="n g">${running}</b> <span class="g">running</span> · <b class="n ${asks ? 'o' : 'muted'}">${asks}</b> <span class="${asks ? 'o' : 'muted'}">waiting on you</span></span></div>`;
 
     const h = s?.host;
     const tiles = `<div class="tiles" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
-        ${tile('sessions', 'sessions', C.yellow, 'sessions', `<b class="n g">${running}</b> <span class="g">running</span> <span class="muted">of</span> <span class="v">${sessions.length}</span>`)}
+        ${tile('sessions', 'sessions', C.yellow, 'sessions', `<b class="n v">${sessions.length}</b> <span class="muted">·</span> <b class="n g">${running}</b> <span class="g">running</span>`)}
         ${tile('newSession', 'plus', C.green, 'new', 'in a repo')}
         ${tile('chat', 'ask', C.orange, 'chat', 'no repo')}
         ${tile('notes', 'note', C.cyan, 'notes', 'dictate a change')}

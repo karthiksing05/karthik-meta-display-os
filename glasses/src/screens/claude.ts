@@ -1,4 +1,4 @@
-import { register, go, back, replace } from '../nav.ts';
+import { register, go, back, replace, justArrived } from '../nav.ts';
 import { store, send, localNotify } from '../store.ts';
 import { C, ago, agoText, bar, btn, esc, footer, header, icon, md, statusColor } from '../ui.ts';
 import { clearComposer, composerBox, composerButtons, mountComposer } from './composer.ts';
@@ -486,20 +486,22 @@ register('transcript', {
       .map(
         ({ r, f }, i, all) => `<button class="item msg ${f.cls}" style="--fc:${roleColor(r.role)};${f.style}" data-f="m:${i}" ${i === all.length - 1 && !replying ? 'data-default' : ''}>
           <span class="grow"><span class="row small"><span class="${ROLE_CLS[r.role] ?? ''}">${r.role === 'tool' ? 'steps' : r.role}</span><span class="grow"></span><span class="muted">${ago(r.at)}</span></span>
-          ${r.role === 'tool' ? `<span class="small muted clamp2" style="display:block">${esc(r.text)}</span>` : `<span class="clamp6" style="display:block">${md(r.text)}</span>`}</span>
+          ${r.role === 'tool' ? `<span class="small muted clamp2" style="display:block">${esc(r.text)}</span>` : `<span style="display:block">${md(r.text)}</span>`}</span>
         </button>`,
       )
       .join('');
     return `${header(x.name, C.yellow)}
     <main class="scroll"><div class="list">${items || '<div class="muted center">Nothing yet.</div>'}</div>
       ${replying ? replyBox(x, '') : `<div class="btns">${replyBox(x, 'dictate')}</div>`}</main>
-    ${footer(replying ? 'pinch the box to talk · back closes it' : 'swipe ↑ for older · pinch a message to read it all')}`;
+    ${footer(replying ? 'pinch the box to talk · back closes it' : 'swipe ↑ scrolls back · pinch a message to open it')}`;
   },
   key: (e, { id }) => closeReplyKey(e, id),
   mount(root, { id }) {
     const x = store.state?.sessions.find((v) => v.id === id);
     if (!x) return;
     const rows = foldedRows(x);
+    // Opened just now: start at the bottom, on the newest message (up scrolls back through it first).
+    if (justArrived()) requestAnimationFrame(() => root.querySelector<HTMLElement>('main.scroll')?.scrollTo({ top: 1e9 }));
     // Watching the newest message? Follow along as new ones arrive.
     const last = rows.length - 1;
     if (root.querySelector(`[data-f="m:${last}"].fx-new`)) {

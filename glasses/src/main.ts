@@ -14,6 +14,7 @@ const app = document.getElementById('app')!;
 const overlay = document.getElementById('overlay')!;
 
 let queued = false;
+let lastShown = '';
 function render() {
   if (queued) return;
   queued = true;
@@ -44,8 +45,16 @@ function render() {
       return;
     }
     setOverride(null);
+    // Same screen re-rendered with new data: keep where it was scrolled to.
+    const shown = `${name}|${JSON.stringify(params)}`;
+    const keepTop = shown === lastShown ? app.querySelector<HTMLElement>('main.scroll')?.scrollTop : undefined;
     app.innerHTML = screen.render(params);
     screen.mount?.(app, params);
+    if (keepTop != null) {
+      const m = app.querySelector<HTMLElement>('main.scroll');
+      if (m) m.scrollTop = keepTop;
+    }
+    lastShown = shown;
     restoreFocus(app);
   });
 }

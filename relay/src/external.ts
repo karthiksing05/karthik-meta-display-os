@@ -6,7 +6,7 @@ import { contextFromFile, contextFromMessages } from './context.ts';
 import { config } from './config.ts';
 import { hub, state } from './hub.ts';
 import { previewFor, ruleFor, titleFor } from './approvals.ts';
-import { continueExternal, ownsSdkSession, publish, releaseAdopted } from './sessions.ts';
+import { continueExternal, hasTranscript, ownsSdkSession, publish, releaseAdopted } from './sessions.ts';
 
 /**
  * Every other Claude Code session on this machine: terminal, VS Code, and Remote Control
@@ -41,7 +41,12 @@ const ext = new Map<string, Ext>(); // keyed by Claude session ID
 const pendingApprovals = new Map<string, (d: 'allow' | 'deny' | 'always') => void>();
 const pendingQuestions = new Map<string, (a: Record<string, string>) => void>();
 
-export const externalList = () => [...ext.values()].map((e) => e.info);
+/**
+ * Outside sessions to show: ones Claude Code saved a conversation for (or on an SSH machine, where we
+ * can't look). Apps also run hidden helper sessions in your folders (to title a chat, say) that fire
+ * hooks with your prompt but save nothing; listing those showed each chat twice under the wrong name.
+ */
+export const externalList = () => [...ext.values()].filter((e) => e.info.host || hasTranscript(e.info.id)).map((e) => e.info);
 
 export function forgetExternal(sdkId: string) {
   if (ext.delete(sdkId)) publish();

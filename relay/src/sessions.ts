@@ -1,4 +1,4 @@
-import { query, type Query, type SDKMessage, type SDKUserMessage, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { listSessions, query, type Query, type SDKMessage, type SDKUserMessage, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -176,14 +176,47 @@ export function sdkTargetOf(s: SessionInfo): { sdkId: string; cwd: string } | nu
 }
 
 const projectsDir = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects');
+const saved_ = new Set<string>(); // conversations known to be saved (they don't go away)
+const unsaved = new Map<string, number>(); // id → when we last looked and found none (checked again after 5 s)
 /** Whether Claude Code saved this conversation (~/.claude/projects/<folder>/<id>.jsonl). */
 export function hasTranscript(sdkId: string) {
+  if (saved_.has(sdkId)) return true;
+  if (Date.now() - (unsaved.get(sdkId) ?? 0) < 5000) return false;
   try {
-    return fs.readdirSync(projectsDir).some((d) => fs.existsSync(path.join(projectsDir, d, `${sdkId}.jsonl`)));
+    const yes = fs.readdirSync(projectsDir).some((d) => fs.existsSync(path.join(projectsDir, d, `${sdkId}.jsonl`)));
+    if (yes) (saved_.add(sdkId), unsaved.delete(sdkId));
+    else unsaved.set(sdkId, Date.now());
+    return yes;
   } catch {
     return true; // can't tell: don't drop anything
   }
 }
+
+/**
+ * Keep names the same as in the Claude apps: their title for a session (`summary`: your custom title,
+ * else the generated one, else the first prompt) replaces ours, for outside sessions and the relay's
+ * own (not the notes session). Every minute, and after a restart.
+ */
+export async function syncTitles() {
+  let list: Awaited<ReturnType<typeof listSessions>>;
+  try {
+    list = await listSessions({ limit: 200 });
+  } catch {
+    return;
+  }
+  const title = new Map(list.filter((s) => s.summary?.trim()).map((s) => [s.sessionId, s.summary.trim().split('\n')[0].slice(0, 48)]));
+  let changed = false;
+  for (const info of externalList()) {
+    const t = title.get(info.id);
+    if (t && t !== info.name) (info.name = t), (changed = true);
+  }
+  for (const l of live.values()) {
+    const t = !l.saved.notes && l.saved.sdkSessionId ? title.get(l.saved.sdkSessionId) : undefined;
+    if (t && t !== l.info.name) (l.info.name = l.saved.name = t), (changed = true);
+  }
+  if (changed) (persist(), publish());
+}
+setInterval(syncTitles, 60_000);
 
 export function ownsSdkSession(sdkId: string) {
   for (const l of live.values()) if (l.saved.sdkSessionId === sdkId) return true;
@@ -222,6 +255,7 @@ export function restoreSessions() {
   }
   state.repos = scanRepos();
   publish();
+  void syncTitles();
 }
 
 /** repo '' starts a one-off chat: no repo, its own empty folder, your connectors available. */

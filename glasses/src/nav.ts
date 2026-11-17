@@ -38,6 +38,7 @@ export function go(name: string, params: any = {}) {
   current = { name, params };
   history.pushState(current, '', `#${name}`);
   lastFocus = null;
+  arrived = true;
   rerender();
 }
 
@@ -45,6 +46,7 @@ export function replace(name: string, params: any = {}) {
   current = { name, params };
   history.replaceState(current, '', `#${name}`);
   lastFocus = null;
+  arrived = true;
   rerender();
 }
 
@@ -66,6 +68,9 @@ export function initHistory() {
 
 // ---------- focus ----------
 let lastFocus: string | null = null;
+/** True for the first render after go()/replace(), so a screen can set itself up once per visit. */
+let arrived = true;
+export const justArrived = () => arrived;
 
 const focusables = (root: ParentNode = document) =>
   Array.from(root.querySelectorAll<HTMLElement>('[data-f]')).filter(
@@ -78,7 +83,13 @@ export function restoreFocus(root: HTMLElement) {
   const keep = lastFocus ? all.find((el) => el.dataset.f === lastFocus) : null;
   const target = keep ?? all.find((el) => el.hasAttribute('data-default')) ?? all[0];
   target?.focus({ preventScroll: true });
-  target?.scrollIntoView({ block: 'nearest' });
+  // Bring it into view, unless it's a control taller than the view that's already partly showing
+  // (you're scrolling through it; jumping to its top would lose your place).
+  const view = target?.closest<HTMLElement>('main.scroll')?.getBoundingClientRect();
+  const r = target?.getBoundingClientRect();
+  const partlyShown = view && r && r.height > view.height && r.bottom > view.top + 4 && r.top < view.bottom - 4;
+  if (!partlyShown) target?.scrollIntoView({ block: 'nearest' });
+  arrived = false;
 }
 
 document.addEventListener('focusin', (e) => {
@@ -99,6 +110,15 @@ function move(dir: 'up' | 'down' | 'left' | 'right') {
     return;
   }
   const a = cur.getBoundingClientRect();
+  // A control taller than the view (a long message): up/down first scroll through it, and move on
+  // only once its edge is in view.
+  const view = cur.closest<HTMLElement>('main.scroll');
+  if (view && (dir === 'up' || dir === 'down')) {
+    const m = view.getBoundingClientRect();
+    const step = Math.round(m.height * 0.6);
+    if (dir === 'down' && a.bottom > m.bottom + 2) return view.scrollBy({ top: Math.min(step, a.bottom - m.bottom + 12), behavior: 'smooth' });
+    if (dir === 'up' && a.top < m.top - 2) return view.scrollBy({ top: -Math.min(step, m.top - a.top + 12), behavior: 'smooth' });
+  }
   const ca = center(a);
   let best: HTMLElement | null = null;
   let bestScore = Infinity;
@@ -126,7 +146,12 @@ function move(dir: 'up' | 'down' | 'left' | 'right') {
     // a label) comes back into view too.
     const top = best.getBoundingClientRect().top;
     const main = best.closest<HTMLElement>('main.scroll');
+    const b = best.getBoundingClientRect();
+    const m = main?.getBoundingClientRect();
     if (main && dir === 'up' && all.every((el) => el.getBoundingClientRect().top >= top - 4)) main.scrollTo({ top: 0, behavior: 'smooth' });
+    // Into a control taller than the view: show the edge you came in from (its end going up, its start going down).
+    else if (main && m && b.height > m.height - 8 && (dir === 'up' || dir === 'down'))
+      main.scrollBy({ top: dir === 'up' ? b.bottom - m.bottom + 8 : b.top - m.top - 8, behavior: 'smooth' });
     else best.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 }

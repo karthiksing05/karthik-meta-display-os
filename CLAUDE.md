@@ -14,7 +14,7 @@ app that runs it (`mac/`, Swift, built by `npm run app`). Read
 - No camera or microphone in web apps. Glasses battery: `navigator.getBattery()`.
 
 ## Conventions
-- Monokai roles: pink = focus/main action, orange = needs you, green = running/on, yellow = names,
+- Monokai roles: green border = focus, pink = main action, orange = needs you, green = running/on, yellow = names,
   cyan = labels, purple = numbers, grey = comments. Font: JetBrains Mono.
 - Protocol changes go in `shared/protocol.ts` first; both sides typecheck against it.
 - The relay sends full state snapshots; screens are pure `render(params) → html` + `mount()` for handlers.

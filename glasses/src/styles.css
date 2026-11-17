@@ -54,7 +54,8 @@ footer { height: 28px; flex: none; padding: 0 14px; color: var(--cm); font-size:
 
 /* Focus is the only cursor on the lens: make it unmistakable. */
 [data-f] { outline: none; }
-[data-f]:focus { border-color: var(--pink) !important; box-shadow: 0 0 0 2px var(--pink); }
+/* Green, so the cursor never blends into the pink main actions. */
+[data-f]:focus { border-color: var(--green) !important; box-shadow: 0 0 0 2px var(--green); }
 
 .btn {
   font: inherit; color: var(--fg); background: var(--panel); border: 1.5px solid var(--line);
@@ -134,7 +135,7 @@ main.reader { overflow-y: auto; scroll-behavior: smooth; }
 /* inline reply box on the session screen */
 .inline-compose { display: flex; flex-direction: column; gap: 8px; }
 textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1.5px solid var(--line); border-radius: 10px; padding: 8px 10px; resize: none; min-height: 70px; width: 100%; box-sizing: border-box; }
-textarea:focus { outline: none; border-color: var(--pink); }
+textarea:focus { outline: none; border-color: var(--green); }
 
 /* 2FA */
 .ghost { position: absolute; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; }

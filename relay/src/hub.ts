@@ -81,10 +81,14 @@ export const hub = {
   },
 };
 
-/** mtime of the built index.html: changes on every `vite build`, so the lens knows to reload. */
+/**
+ * The built app's script name (vite hashes it, e.g. `index-BCXcK9q_`). The lens compares it with the
+ * script it is running, so even a copy that was already stale when it opened knows to reload.
+ */
 function buildId(): string {
   try {
-    return String(Math.floor(fs.statSync(path.join(config.glassesDist, 'index.html')).mtimeMs));
+    const html = fs.readFileSync(path.join(config.glassesDist, 'index.html'), 'utf8');
+    return html.match(/assets\/(index-[\w-]+)\.js/)?.[1] ?? '';
   } catch {
     return '';
   }

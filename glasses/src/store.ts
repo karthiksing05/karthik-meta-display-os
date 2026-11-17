@@ -81,6 +81,9 @@ export function localNotify(text: string, level: 'info' | 'good' | 'warn' | 'err
 // ---------- socket ----------
 let ws: WebSocket | null = null;
 let firstBuild: string | null = null;
+/** The hashed name of the script this page is running (`index-XXXX`), or null under the dev server. */
+const ownBuild =
+  [...document.querySelectorAll<HTMLScriptElement>('script[src]')].map((s) => s.src.match(/assets\/(index-[\w-]+)\.js/)?.[1]).find(Boolean) ?? null;
 let retry = 0;
 const queue: string[] = [];
 
@@ -118,9 +121,10 @@ export function connect() {
       store.locked = null;
       store.state = msg.state;
       store.skew = msg.state.serverTime - Date.now();
-      // First build we see is the one we're running; a different one means the app was rebuilt.
+      // The relay names its build by the script's hashed file name; if ours differs, we're stale
+      // (also when we were already stale on opening). Dev server (no hashed script): first build wins.
       if (msg.state.build) {
-        firstBuild ??= msg.state.build;
+        firstBuild ??= ownBuild ?? msg.state.build;
         if (msg.state.build !== firstBuild) store.stale = true;
       }
     } else if (msg.t === 'status.report') {

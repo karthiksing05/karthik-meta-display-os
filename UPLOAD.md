@@ -11,8 +11,10 @@ on a free Oracle Cloud VM instead. The glasses only care about the address.
 Mac (this folder) ──git push──▶ GitHub ──git pull──▶ relay server ──HTTPS──▶ glasses
 ```
 
-> A server relay can't see your Mac's terminal, VS Code or Remote Control sessions (those run on
-> the Mac), and laptop sync doesn't apply. Sessions started from the glasses run on the server, in
+> A server relay can't see your Mac's terminal, VS Code or Remote Control sessions on its own (those
+> run on the Mac), and laptop sync doesn't apply. Any machine you can SSH into (your Mac included) can
+> report its sessions to it with `npm run hooks -- remote user@host`, run from a checkout whose
+> `relay/.env` has the server's `PUBLIC_URL` and `SHELL_TOKEN`. Sessions started from the glasses run on the server, in
 > the repos you clone there.
 
 ## 1. Set up the VM

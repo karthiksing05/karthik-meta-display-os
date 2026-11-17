@@ -7,7 +7,10 @@
 - turns permission requests into **approval cards** and Claude's questions into the **question inbox**
 - gives every session an in-process **glasses MCP server** (`notify`, `show_card`, `ask_choice`)
 - answers **"how's everything going?"** across all sessions
-- shows your other Claude Code sessions (terminal, VS Code, Remote Control) through hooks
+- shows your other Claude Code sessions (terminal, VS Code, Remote Control) through hooks, and
+  sessions on machines you SSH into (`npm run hooks -- remote user@host`)
+- runs the **notes** session, which edits your Apple Notes to-do list (`relay/src/notes.ts`)
+- tracks each session's **context window** use (`relay/src/context.ts`)
 - keeps your laptop's own windows in sync with sessions the glasses continued
 - locks the whole app behind a swipe pattern or password (optional, recommended)
 - cleans dictated replies with **Groq** (optional)
@@ -111,13 +114,28 @@ Claude tab runs `claude --resume=<id>`; the hooks report the rest), and:
 - **Quick phrases** (continue, lgtm, elaborate, draft plan, summarize): one pinch sends them to a session.
   Edit `~/.claude-shell/data/phrases.json`; changes show within seconds.
 - **How's everything going?** asks each recent session itself (up to 8, active in the last day, 4 at a
-  time, about 30 s): "where are you, what's done, what's next, anything blocking?". The question goes to a
-  **fork** of the session (`forkSession`, `persistSession: false`, no hooks, no tools): Claude with that
-  session's full context, but nothing is written back, so the real session isn't interrupted or changed
-  and laptop tabs don't go stale. Those answers are summarized into a 2-3 sentence overview and a line or two per
-  session, each with **since last**, what changed since the previous check (kept in
-  `DATA_DIR/last-status.json`). Everything scrolls, and pinching the overview opens it in the reader.
-  The summary is never saved as a Claude session, so it doesn't pile up in your session lists.
+  time, up to 90 s each): "what are you working on, what's done, what's next, anything blocking?".
+  - An **idle** session gets the question as a real message in its chat, so you see it and the reply
+    there too.
+  - A session that's **busy or waiting on you** is asked in a **fork** (`forkSession`,
+    `persistSession: false`, no hooks, no tools): Claude with its full context, but nothing is
+    written back, so its work isn't interrupted.
+  - Sessions with no saved conversation (helper sessions some apps run, sessions on SSH machines) and
+    cleared ones aren't asked.
+
+  The answers are summarized into an overview plus a card per session (where it stands, **since last**
+  compared with the previous check kept in `DATA_DIR/last-status.json`, and its answer in its own
+  words). Swipe ← → through the cards. Pinch the button again while it's asking to **cancel**: no more
+  sessions are asked, ones answering are interrupted, and no report opens. The summary is never saved
+  as a Claude session, so it doesn't pile up in your session lists.
+- **Clearing dead sessions:** stopped, errored, or idle for 3+ hours (never one waiting on you, nor the
+  notes session). Clearing only hides them (`DATA_DIR/cleared.json`); new activity brings one back,
+  and **show N cleared** brings back all of them.
+- **Notes:** the notes tile sends your dictation to one long-lived session in
+  `DATA_DIR/notes-workspace` with Apple Notes tools (`list_notes`, `read_note`, `write_note`,
+  `create_note`, `preferences`). It finds your main to-do list (and remembers it), then rewrites it
+  neatly. Every rewrite backs up the old note to `DATA_DIR/notes-backups`. macOS asks once whether
+  ClaudeProd may control Notes.
 
 ## Approvals (no rules editor)
 

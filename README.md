@@ -10,11 +10,13 @@
   <img src="docs/images/session.png" width="300" alt="A session">
 </p>
 
-Watch every Claude Code session on your Mac from your glasses: the ones it starts, and the ones
-already running in your terminal, VS Code or Remote Control. Approve a command with a swipe,
+Watch every Claude Code session from your glasses: the ones it starts, the ones already running
+in your terminal, VS Code or Remote Control, and the ones on machines you SSH into. Watch each
+session work in a live feed, with how full its context window is. Approve a command with a swipe,
 answer Claude's questions, read what it said, and reply by voice or with a one-pinch phrase. Ask
-**"how's everything going?"** for a status card from every session, with the ones waiting on
-you first, and dictate changes to your Apple Notes to-do list with the **notes** tile. Maps, messages and photos are left to the glasses' own apps.
+**"how's everything going?"** and swipe through a status card per session, in its own words, with
+the ones waiting on you first. Dictate changes to your Apple Notes to-do list with the **notes**
+tile. Maps, messages and photos are left to the glasses' own apps.
 
 It's two parts: a 600×600 **web app** for the glasses, and a **relay** on your Mac that runs the
 sessions and serves the app over HTTPS. The **ClaudeProd menu bar app** sets both up and runs them.
@@ -93,6 +95,7 @@ the pattern and pinch. 5 wrong tries lock it for 15 minutes.
 | Cleaner dictated replies | a free key from console.groq.com → `GROQ_API_KEY` in `relay/.env` |
 | 2FA codes on the lens | read [docs/TWO_FACTOR.md](docs/TWO_FACTOR.md), then `npm run 2fa -- --image <export-QR screenshot>` |
 | Apple Notes (the notes tile) | nothing to set up: the first time, macOS asks once on the Mac whether ClaudeProd may control Notes. Each rewrite backs up the old note to `DATA_DIR/notes-backups` |
+| Sessions on machines you SSH into | `npm run hooks -- remote user@host` once per machine (needs `curl` and `python3` there). They show up tagged with the machine's name ([docs/SERVER.md](docs/SERVER.md#sessions-on-machines-you-ssh-into)) |
 | Repos for new sessions | `REPOS_DIR` in `relay/.env` (the folder that holds your git repos, searched 3 levels deep) |
 | Start at login | the **Open ClaudeProd at login** switch in the panel |
 | Check everything | **Checkup** in the panel (or `npm run doctor`) |
@@ -112,13 +115,13 @@ browser with fake sessions. Arrow keys = swipes, Enter = pinch, Esc = back.
 
 <table>
 <tr>
-<td align="center" width="33%"><img src="docs/images/home.png" width="260"><br><b>home</b>: "how's everything going?", approvals, Claude's questions, sessions, ask any session, quick sends</td>
-<td align="center" width="33%"><img src="docs/images/status-report.png" width="260"><br><b>status</b>: a line on every session, the ones that need you first</td>
-<td align="center" width="33%"><img src="docs/images/sessions.png" width="260"><br><b>sessions</b>: needs you / working / your turn / earlier</td>
+<td align="center" width="33%"><img src="docs/images/home.png" width="260"><br><b>home</b>: how many sessions and how many are running, "how's everything going?", approvals, Claude's questions, then sessions, new, chat, notes, 2fa, settings</td>
+<td align="center" width="33%"><img src="docs/images/status-report.png" width="260"><br><b>status</b>: swipe ← → through an overview and a card per session (its own answer, what changed since last time); pinch the button again while it's asking to cancel</td>
+<td align="center" width="33%"><img src="docs/images/sessions.png" width="260"><br><b>sessions</b>: needs you / working / your turn / earlier; <b>clear N dead</b> hides stopped and long-idle ones</td>
 </tr>
 <tr>
 <td align="center"><img src="docs/images/approval.png" width="260"><br><b>approve</b>: → approve, ← deny, ↓ always allow this kind</td>
-<td align="center"><img src="docs/images/reader.png" width="260"><br><b>read</b>: pinch a message to read all of it; swipe scrolls, back returns</td>
+<td align="center"><img src="docs/images/reader.png" width="260"><br><b>read</b>: pinch the feed for the whole conversation, then a message to read all of it</td>
 <td align="center"><img src="docs/images/reply.png" width="260"><br><b>reply</b>: <i>dictate</i> (cleaned FreeFlow-style) or <i>handwrite</i> (sent as written); the box opens in place</td>
 </tr>
 <tr>
@@ -127,6 +130,19 @@ browser with fake sessions. Arrow keys = swipes, Enter = pinch, Esc = back.
 <td align="center"><img src="docs/images/lock.png" width="260"><br><b>lock</b>: nothing shows until you unlock</td>
 </tr>
 </table>
+
+**A session** shows a live feed: new steps and messages slide in and flash, and older ones scroll
+up and out. A small gauge shows how full its context window is (green, then orange past 60%, pink past 80%).
+Pinch the feed for the whole conversation. The green border is always where you are.
+
+**Clearing dead sessions.** Stopped, errored and sessions idle for 3+ hours count as dead. **clear N
+dead** on the sessions screen, or **clear from list** on one session, hides them. Nothing is
+deleted: one comes back if it does anything new, and **show N cleared** brings them all back.
+
+**Notes.** The **notes** tile opens dictation straight away. It goes to one long-lived Claude session
+that reads your Apple Notes, finds your main to-do list and adds to it neatly (one task per line,
+grouped, duplicates merged). Notes sync to your iPhone through iCloud. Checkboxes can't be written by
+script, so checklist items come out as bullets.
 
 **Quick phrases** on every session send with one pinch: *continue*, *lgtm*, *elaborate*,
 *draft plan*, *summarize*. Change them in `~/.claude-shell/data/phrases.json`.
@@ -151,6 +167,7 @@ except under *everything*.
 | `npm run up` | the same stack from a terminal: deps, `.env`, hooks, build, tunnel, relay, QR. Leave it running and edits go live (`-- --demo` for fake data) |
 | `npm run doctor` | check the relay, address, Claude login, repos, hooks, lock, Groq and 2FA, and say what to fix |
 | `npm run hooks -- install` | show your terminal / VS Code / Remote Control sessions on the lens (`up` does this for you) |
+| `npm run hooks -- remote user@host` | the same for a machine you SSH into (`remote-remove` undoes it) |
 | `npm run 2fa -- --image <file>` | import 2FA accounts from an Authenticator export QR ([docs/TWO_FACTOR.md](docs/TWO_FACTOR.md)) |
 | `npm run qr` | print the install QR again |
 | `npm run dev:demo` | hot-reloading app on :5173 with fake data, for working on the UI |
@@ -162,7 +179,7 @@ except under *everything*.
 | | |
 |---|---|
 | [docs/PUSH_TO_GLASSES.md](docs/PUSH_TO_GLASSES.md) | installing on the glasses, addresses, updates, input, troubleshooting |
-| [docs/SERVER.md](docs/SERVER.md) | the relay: sessions, worktrees, outside sessions, approvals, lock, endpoints |
+| [docs/SERVER.md](docs/SERVER.md) | the relay: sessions, worktrees, outside and SSH sessions, status checks, notes, approvals, lock, endpoints |
 | [docs/TWO_FACTOR.md](docs/TWO_FACTOR.md) | 2FA codes on the lens, and the trade-off |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | how it fits together, adding a screen |
 | [UPLOAD.md](UPLOAD.md) | running the relay on an always-on server instead of your Mac |

@@ -6,7 +6,9 @@
 │ nav.ts: arrows / Enter / back → focus     │◀──────▶│ lock.ts: app lock (pattern/password → device pass) │
 │ store.ts: socket, token, lock pass        │        │ sessions.ts: Agent SDK query() per session         │
 │ composer: system text input → Groq → send │        │ approvals.ts: preset + learned rules               │
-│ pixels.ts: the swirl band                 │        │ external.ts: terminal/VS Code/RC sessions (hooks)  │
+│ fresh.ts: arrival animations              │        │ notes.ts: Apple Notes tools for the notes session  │
+│                                           │        │ context.ts / cleared.ts: context use, hidden list  │
+│ pixels.ts: the mountains-and-river band   │        │ external.ts: terminal/VS Code/RC sessions (hooks)  │
 └───────────────────────────────────────────┘        │ desk.ts: which sessions are open on the laptop     │
                                                      │ status.ts: "how's everything going?"               │
 ┌──── ClaudeProd.app (menu bar, Swift) ─────┐ runs   │ totp.ts: encrypted 2FA vault                       │
@@ -18,6 +20,10 @@
 - **One protocol file:** `shared/protocol.ts`. Both sides import it, so a type change shows up in both.
 - **Snapshots, not patches:** the relay sends the whole `ShellState` (it's small) on every change,
   at most every 150 ms. The app re-renders and puts focus back on the same control by its `data-f` key.
+- **Animations survive re-renders:** every snapshot rebuilds the screen, so `fresh.ts` remembers when
+  each item first appeared and gives it a negative `animation-delay`: it carries on instead of restarting.
+- **Updates reach the lens by themselves:** the relay's `state.build` is the hashed name of the built
+  script; the app compares it with the script it's running and reloads when they differ.
 - **Glasses stay thin:** all secrets, keys and logic live on the relay. The lens only draws and sends intents.
 - **Locked by default when configured:** with an app lock set, a connection gets nothing until it unlocks (`lock.ts`).
 - **Claude only:** nothing uses Meta AI. WebMCP and Meta's connectors aren't used, because they serve Meta AI.

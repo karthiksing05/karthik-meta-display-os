@@ -6,6 +6,7 @@ import { load, save } from './store.ts';
 import { config } from './config.ts';
 import { readHost } from './host.ts';
 import { lockEnabled } from './lock.ts';
+import { visible } from './cleared.ts';
 
 const defaultSettings: Settings = {
   approvals: 'balanced',
@@ -51,6 +52,7 @@ export const state: ShellState = {
   serverTime: Date.now(),
   host: { battery: null, charging: false, wifi: null },
   build: buildId(),
+  cleared: 0,
 };
 
 const clients = new Set<WebSocket>();
@@ -124,7 +126,7 @@ setInterval(pollHost, 30_000).unref();
 
 function snapshot(): ShellState {
   state.serverTime = Date.now();
-  return state;
+  return { ...state, ...visible(state.sessions) };
 }
 
 function send(ws: WebSocket, msg: ServerMsg) {

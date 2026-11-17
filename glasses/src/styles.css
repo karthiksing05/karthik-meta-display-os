@@ -55,7 +55,7 @@ footer { height: 28px; flex: none; padding: 0 14px; color: var(--cm); font-size:
 /* Focus is the only cursor on the lens: make it unmistakable. */
 [data-f] { outline: none; }
 /* Green, so the cursor never blends into the pink main actions. */
-[data-f]:focus { border-color: var(--green) !important; box-shadow: 0 0 0 2px var(--green); }
+[data-f]:focus { border-color: var(--green) !important; box-shadow: 0 0 0 2px var(--green); outline: 2px solid var(--green) !important; outline-offset: 1px; }
 
 .btn {
   font: inherit; color: var(--fg); background: var(--panel); border: 1.5px solid var(--line);

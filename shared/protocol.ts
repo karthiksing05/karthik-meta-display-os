@@ -117,6 +117,8 @@ export interface ShellState {
   host: HostInfo;
   /** Changes when the glasses app is rebuilt; the lens reloads itself to pick up the new version. */
   build: string;
+  /** Sessions cleared from the list (hidden, not deleted; one comes back if it does anything new). */
+  cleared: number;
 }
 
 export interface TotpCode {
@@ -159,6 +161,9 @@ export type ClientMsg =
   /** Open this session on the laptop (VS Code tab or terminal), freshly loaded. */
   | { t: 'session.openDesk'; id: string }
   | { t: 'session.interrupt'; id: string }
+  /** Hide sessions from the list (ids), or bring every cleared one back (restore). */
+  | { t: 'sessions.clear'; ids: string[] }
+  | { t: 'sessions.restore' }
   | { t: 'approval.decide'; id: string; decision: 'allow' | 'deny' | 'always' }
   | { t: 'question.answer'; id: string; answers: Record<string, string> }
   | { t: 'ask'; target: 'all' | string; text: string }

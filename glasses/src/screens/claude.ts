@@ -242,6 +242,19 @@ function tags(x: SessionInfo) {
 }
 const deskName = (x: SessionInfo) => (x.desk === 'vscode' ? 'VS Code tab' : 'terminal');
 
+/**
+ * Dead: stopped or errored, or sitting idle for 3 hours. Never one waiting on you, still working,
+ * or the notes session. "clear" hides them from the list (the relay keeps them; new activity brings one back).
+ */
+const DEAD_AFTER = 3 * 3600_000;
+function isDead(x: SessionInfo, asks: Set<string>) {
+  if (asks.has(x.id) || x.notes) return false;
+  if (x.status === 'stopped' || x.status === 'error') return true;
+  return (x.status === 'idle' || x.status === 'done') && Date.now() + store.skew - x.lastActivity > DEAD_AFTER;
+}
+const asksOf = () => new Set([...(store.state?.approvals ?? []), ...(store.state?.questions ?? [])].map((a) => a.sessionId));
+const deadIds = () => (store.state?.sessions ?? []).filter((x) => isDead(x, asksOf())).map((x) => x.id);
+
 function sessionRow(x: SessionInfo) {
   return `<button class="item" data-f="s:${x.id}">
     <i class="status" style="background:${statusColor(x.status)}"></i>
@@ -257,7 +270,9 @@ register('sessions', {
   render() {
     const s = store.state;
     const list = s?.sessions ?? [];
-    const asks = new Set([...(s?.approvals ?? []), ...(s?.questions ?? [])].map((a) => a.sessionId));
+    const asks = asksOf();
+    const dead = list.filter((x) => isDead(x, asks)).length;
+    const cleared = s?.cleared ?? 0;
     const placed = new Set<string>();
     const groups = GROUPS.map(([label, test]) => {
       const items = list.filter((x) => !placed.has(x.id) && test(x, asks)).sort((a, b) => b.lastActivity - a.lastActivity);
@@ -266,15 +281,25 @@ register('sessions', {
     }).join('');
     return `${header('sessions', C.pink)}
     <main class="scroll">
-      <div class="btns">${btn('new', 'new session', { icon: 'plus' })}${btn('chat', 'chat', { icon: 'ask' })}</div>
+      <div class="btns">${btn('new', 'new session', { icon: 'plus' })}${btn('chat', 'chat', { icon: 'ask' })}${
+        dead ? btn('clear', `clear ${dead} dead`, { icon: 'x', cls: 'chip' }) : ''
+      }</div>
       <div class="list">${groups || '<div class="muted center">No sessions yet.</div>'}</div>
+      ${cleared ? `<div class="btns">${btn('restore', `show ${cleared} cleared`, { cls: 'chip' })}</div>` : ''}
     </main>
-    ${footer('pinch to open · ext = terminal / vs code / remote control')}`;
+    ${footer(`<span><span class="g">${list.length - dead} live</span> · <span class="muted">${dead} dead · ${cleared} cleared</span></span>`)}`;
   },
   mount(root) {
     onEach(root, 's:', (id) => go('session', { id }));
     on(root, 'new', () => go('newSession'));
     on(root, 'chat', () => go('compose', { kind: 'new', repo: '', title: 'chat with claude' }));
+    on(root, 'clear', () => {
+      const ids = deadIds();
+      send({ t: 'sessions.clear', ids });
+      localNotify(`cleared ${ids.length} dead session${ids.length === 1 ? '' : 's'}`);
+      (root.querySelector('[data-f="new"]') as HTMLElement | null)?.focus();
+    });
+    on(root, 'restore', () => send({ t: 'sessions.restore' }));
   },
 });
 
@@ -345,6 +370,7 @@ register('session', {
       <div class="btns">
         ${!ext && x.status === 'running' ? btn('interrupt', 'pause', { icon: 'pause' }) : ''}
         ${!ext && busy ? btn('stop', 'stop', { icon: 'stop' }) : ''}
+        ${!busy && !pending && !asked && !x.notes ? btn('clear', 'clear from list', { icon: 'x' }) : ''}
       </div>
     </main>
     ${footer(replying ? 'pinch the box to talk · back closes it' : ext && busy ? 'running elsewhere · replies are delivered when it finishes this step' : 'pinch a phrase to send it · or dictate / handwrite')}`;
@@ -371,6 +397,11 @@ register('session', {
     });
     on(root, 'interrupt', () => send({ t: 'session.interrupt', id }));
     on(root, 'stop', () => send({ t: 'session.stop', id }));
+    on(root, 'clear', () => {
+      send({ t: 'sessions.clear', ids: [id] });
+      localNotify(`cleared ${x?.name ?? 'session'} · it comes back if it does anything new`);
+      back();
+    });
   },
 });
 

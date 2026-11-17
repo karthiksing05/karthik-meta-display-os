@@ -6,6 +6,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import QRCode from 'qrcode';
 import type { ClientMsg, ServerMsg } from '../../shared/protocol.ts';
 import { config } from './config.ts';
+import { clearSessions, isCleared, restoreCleared } from './cleared.ts';
 import { hub, state } from './hub.ts';
 import {
   answerQuestion, askAll, allSessions, decideApproval, interruptSession, restoreSessions, scanRepos,
@@ -191,7 +192,7 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
   // Messages every mode handles the same way.
   switch (msg.t) {
     case 'status.check':
-      return reply(ws, { t: 'status.report', report: await statusReport(config.demo ? state.sessions : allSessions()) });
+      return reply(ws, { t: 'status.report', report: await statusReport((config.demo ? state.sessions : allSessions()).filter((s) => !isCleared(s))) });
     case 'totp.unlock': {
       if (!config.demo && !totpEnabled()) return reply(ws, { t: 'totp.locked', reason: '2FA not set up (docs/TWO_FACTOR.md)' });
       const r = config.demo
@@ -229,6 +230,12 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
     case 'rules.clear':
       state.settings.learnedRules = [];
       hub.saveSettings();
+      return hub.changed();
+    case 'sessions.clear':
+      clearSessions(msg.ids, config.demo ? state.sessions : allSessions());
+      return hub.changed();
+    case 'sessions.restore':
+      restoreCleared();
       return hub.changed();
     case 'refresh':
       if (!config.demo) {

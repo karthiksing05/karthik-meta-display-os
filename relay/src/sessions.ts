@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { ContextUse, SessionInfo, TranscriptItem } from '../../shared/protocol.ts';
 import { contextOf } from './context.ts';
@@ -168,8 +169,20 @@ onDeskChange(publish);
 export function sdkTargetOf(s: SessionInfo): { sdkId: string; cwd: string } | null {
   const l = live.get(s.id);
   const cwd = l ? l.saved.worktree || l.info.cwd : s.cwd;
-  if (l) return l.saved.sdkSessionId && cwd ? { sdkId: l.saved.sdkSessionId, cwd } : null;
-  return s.source === 'external' && s.cwd ? { sdkId: s.id, cwd: s.cwd } : null;
+  if (l) return l.saved.sdkSessionId && cwd && hasTranscript(l.saved.sdkSessionId) ? { sdkId: l.saved.sdkSessionId, cwd } : null;
+  // Outside sessions with no saved conversation (helper sessions some apps run, which still fire hooks)
+  // can't be asked: taking one over would only leave an empty "<folder>" session behind.
+  return s.source === 'external' && s.cwd && hasTranscript(s.id) ? { sdkId: s.id, cwd: s.cwd } : null;
+}
+
+const projectsDir = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'projects');
+/** Whether Claude Code saved this conversation (~/.claude/projects/<folder>/<id>.jsonl). */
+export function hasTranscript(sdkId: string) {
+  try {
+    return fs.readdirSync(projectsDir).some((d) => fs.existsSync(path.join(projectsDir, d, `${sdkId}.jsonl`)));
+  } catch {
+    return true; // can't tell: don't drop anything
+  }
 }
 
 export function ownsSdkSession(sdkId: string) {
@@ -186,7 +199,14 @@ function log(l: Live, role: TranscriptItem['role'], text: string) {
 
 /** Restore sessions from disk after a relay restart. They come back stopped; sending a message resumes them. */
 export function restoreSessions() {
-  for (const s of load<Saved[]>('sessions', [])) {
+  const saved = load<Saved[]>('sessions', []);
+  // Outside sessions continued from the lens whose conversation was never saved: empty shells, drop them.
+  const keep = saved.filter((s) => !(s.adopted && !hasTranscript(s.sdkSessionId ?? s.id)));
+  if (keep.length !== saved.length) {
+    console.log(`[sessions] dropped ${saved.length - keep.length} continued session(s) with no saved conversation`);
+    save('sessions', keep);
+  }
+  for (const s of keep) {
     if (!fs.existsSync(s.worktree)) continue;
     live.set(s.id, {
       saved: s,
@@ -468,7 +488,7 @@ export async function askNotes(text: string): Promise<string> {
  * Send a real message into a session's chat (same path as replying from the lens) and wait for
  * Claude's reply to it. Resolves with the reply text, or '' if none came within timeoutMs.
  */
-export async function askInChat(id: string, text: string, timeoutMs: number): Promise<string> {
+export async function askInChat(id: string, text: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
   const t0 = Date.now();
   sendToSession(id, text);
   const reply = () =>
@@ -478,6 +498,11 @@ export async function askInChat(id: string, text: string, timeoutMs: number): Pr
       .join('\n');
   while (Date.now() - t0 < timeoutMs) {
     await sleep(500);
+    if (signal?.aborted) {
+      // cancelled: stop it answering (the question stays in its chat)
+      if (['starting', 'running'].includes(live.get(id)?.info.status ?? '')) await interruptSession(id);
+      return '';
+    }
     const st = live.get(id)?.info.status;
     if (st === 'idle' || st === 'error' || st === 'stopped') return reply();
   }

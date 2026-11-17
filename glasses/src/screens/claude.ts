@@ -13,11 +13,22 @@ let checking = false;
 const open = new Set<string>();
 const toggle = (k: string, on: boolean) => (on ? open.add(k) : open.delete(k), store.emit());
 
-/** "How's everything going?": ask the relay for a report; the status screen opens when it lands. */
+/**
+ * "How's everything going?": ask the relay for a report; the status screen opens when it lands.
+ * Pinched again while it's checking (say, by accident the first time), it cancels.
+ */
 function checkStatus() {
-  checking = true;
-  send({ t: 'status.check' });
-  localNotify('asking each session how it is going… (about 30 s)', 'info');
+  if (checking) {
+    checking = false;
+    store.statusCancelled = true;
+    send({ t: 'status.cancel' });
+    localNotify('status check cancelled', 'info');
+  } else {
+    checking = true;
+    store.statusCancelled = false;
+    send({ t: 'status.check' });
+    localNotify('asking each session how it is going… pinch again to cancel', 'info');
+  }
   store.emit();
 }
 
@@ -40,7 +51,7 @@ function statusButton(key = 'status', idle = "how's everything going?", cls = 'p
     <svg class="ekg" width="40" height="22" viewBox="0 0 44 22" aria-hidden="true">
       <path class="base" d="M0 11h10l3-7 5 14 4-10 3 3h19" pathLength="100"/>
       <path class="trace" d="M0 11h10l3-7 5 14 4-10 3 3h19" pathLength="100"/>
-    </svg><span>${label}</span>${checking ? `<i class="dots">${`<b style="background:${C.pink};${phase(1200)}"></b>`.repeat(3)}</i>` : ''}
+    </svg><span>${label}</span>${checking ? `<i class="dots">${`<b style="background:${C.pink};${phase(1200)}"></b>`.repeat(3)}</i><span class="small muted cancel">pinch to cancel</span>` : ''}
   </button>`;
 }
 
@@ -217,11 +228,7 @@ register('report', {
       if (store.state?.sessions.some((x) => x.id === l.id)) go('session', { id: l.id });
       else localNotify('that session is gone');
     });
-    on(root, 'recheck', () => {
-      checking = true;
-      send({ t: 'status.check' });
-      store.emit();
-    });
+    on(root, 'recheck', checkStatus);
   },
 });
 
@@ -358,7 +365,7 @@ register('session', {
           ? `<div class="small o">open in a ${deskName(x)} on your laptop: that window won't show this reply. Close it after, then "open on laptop".</div>`
           : ''
       }
-      <div class="btns">${btn('status', checking ? 'checking…' : "how's everything going?", { cls: 'chip', icon: 'pulse' })}${phrases.map((p, i) => btn(`ph:${i}`, esc(p.label), { cls: 'chip' })).join('')}</div>
+      <div class="btns">${btn('status', checking ? 'checking… · cancel' : "how's everything going?", { cls: 'chip', icon: 'pulse' })}${phrases.map((p, i) => btn(`ph:${i}`, esc(p.label), { cls: 'chip' })).join('')}</div>
       ${
         x.todos.length
           ? `<div class="card small">${x.todos

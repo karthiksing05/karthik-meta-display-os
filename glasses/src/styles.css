@@ -211,3 +211,4 @@ textarea:focus { outline: none; border-color: var(--green); }
 @keyframes slide-r { from { transform: translateX(60px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes slide-l { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
 .btn.chip.status-btn .ekg { width: 30px; height: 16px; }
+.status-btn .cancel { margin-left: 6px; }

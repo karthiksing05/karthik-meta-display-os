@@ -50,6 +50,8 @@ export const store = {
   report: null as StatusReport | null,
   /** Server clock minus ours, so "5m ago" is right even if the glasses clock drifts. */
   skew: 0,
+  /** The status check was cancelled: drop a report that still arrives for it. */
+  statusCancelled: false,
   /** A newer build of this app is on the relay; main.ts reloads when it's safe. */
   stale: false,
   /** App lock: set while the relay wants the pattern/password. */
@@ -128,7 +130,7 @@ export function connect() {
         if (msg.state.build !== firstBuild) store.stale = true;
       }
     } else if (msg.t === 'status.report') {
-      store.report = msg.report;
+      if (!store.statusCancelled) store.report = msg.report;
     } else if (msg.t === 'error') {
       store.lastError = msg.text;
     }

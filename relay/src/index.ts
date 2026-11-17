@@ -12,7 +12,7 @@ import {
   answerQuestion, askAll, allSessions, decideApproval, interruptSession, restoreSessions, scanRepos,
   askNotes, openSessionOnDesk, sendToSession, startSession, stopSession,
 } from './sessions.ts';
-import { statusReport } from './status.ts';
+import { cancelStatus, statusReport } from './status.ts';
 import { cleanDictation } from './dictation.ts';
 import { demoHandle, startDemo } from './demo.ts';
 import { installLink } from '../scripts/links.ts';
@@ -191,8 +191,12 @@ function reply(ws: WebSocket, msg: ServerMsg) {
 async function handle(ws: WebSocket, msg: ClientMsg) {
   // Messages every mode handles the same way.
   switch (msg.t) {
-    case 'status.check':
-      return reply(ws, { t: 'status.report', report: await statusReport((config.demo ? state.sessions : allSessions()).filter((s) => !isCleared(s))) });
+    case 'status.check': {
+      const report = await statusReport((config.demo ? state.sessions : allSessions()).filter((s) => !isCleared(s)));
+      return report ? reply(ws, { t: 'status.report', report }) : undefined;
+    }
+    case 'status.cancel':
+      return cancelStatus();
     case 'totp.unlock': {
       if (!config.demo && !totpEnabled()) return reply(ws, { t: 'totp.locked', reason: '2FA not set up (docs/TWO_FACTOR.md)' });
       const r = config.demo

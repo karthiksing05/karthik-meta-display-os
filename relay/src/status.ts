@@ -22,7 +22,18 @@ import { askInChat, sdkTargetOf } from './sessions.ts';
 const RANK: Record<string, number> = { waiting: 1, running: 1, starting: 1, idle: 2, done: 2, error: 2, stopped: 3 };
 type Line = StatusReport['lines'][number];
 
-export async function statusReport(sessions: SessionInfo[]): Promise<StatusReport> {
+let current: AbortController | null = null;
+/** Stop the check in progress (the "how's everything going?" button pinched again). */
+export function cancelStatus() {
+  current?.abort();
+  current = null;
+}
+
+/** Resolves null if the check was cancelled. */
+export async function statusReport(sessions: SessionInfo[]): Promise<StatusReport | null> {
+  current?.abort();
+  const ac = (current = new AbortController());
+  const signal = ac.signal;
   const prev = load<StatusReport | null>('last-status', null);
   const prevById = new Map((prev?.lines ?? []).map((l) => [l.id, l]));
 
@@ -48,8 +59,9 @@ export async function statusReport(sessions: SessionInfo[]): Promise<StatusRepor
 
   if (config.claudeAvailable && !config.demo && ordered.length) {
     try {
-      const answers = await askSessions(ordered);
-      const out = await summarize(ordered, pending, prev, prevById, answers);
+      const answers = await askSessions(ordered, signal);
+      if (signal.aborted) return null;
+      const out = await summarize(ordered, pending, prev, prevById, answers, signal);
       if (out.headline) headline = out.headline;
       lines.forEach((l, i) => {
         const t = out.lines.get(i + 1);
@@ -61,6 +73,8 @@ export async function statusReport(sessions: SessionInfo[]): Promise<StatusRepor
       /* keep the plain lines */
     }
   }
+  if (signal.aborted) return null;
+  if (current === ac) current = null;
   const report: StatusReport = { at: Date.now(), headline, lines, previousAt: prev?.at };
   save('last-status', report);
   return report;
@@ -99,7 +113,7 @@ const ASK_PARALLEL = 4;
  * their chat (you'll see it, and the reply, there). Sessions that are busy or waiting on you are asked
  * in a fork that's never saved, so their work isn't interrupted. Returns id → answer.
  */
-async function askSessions(sessions: SessionInfo[]): Promise<Map<string, string>> {
+async function askSessions(sessions: SessionInfo[], signal: AbortSignal): Promise<Map<string, string>> {
   const day = Date.now() - 24 * 3600_000;
   const targets = sessions
     .filter((s) => s.status !== 'stopped' || s.lastActivity > day)
@@ -112,10 +126,10 @@ async function askSessions(sessions: SessionInfo[]): Promise<Map<string, string>
   const answers = new Map<string, string>();
   let next = 0;
   const worker = async () => {
-    while (next < targets.length) {
+    while (!signal.aborted && next < targets.length) {
       const t = targets[next++];
       const busy = ['starting', 'running', 'waiting'].includes(t.s.status);
-      const ask = busy ? askOne(t.sdkId, t.cwd) : askInChat(t.s.id, ASK, ASK_TIMEOUT_MS);
+      const ask = busy ? askOne(t.sdkId, t.cwd, signal) : askInChat(t.s.id, ASK, ASK_TIMEOUT_MS, signal);
       const text = await ask.catch((e) => {
         console.warn(`[status] couldn't ask ${t.s.name}:`, (e as Error).message);
         return '';
@@ -127,8 +141,9 @@ async function askSessions(sessions: SessionInfo[]): Promise<Map<string, string>
   return answers;
 }
 
-async function askOne(sdkId: string, cwd: string): Promise<string> {
+async function askOne(sdkId: string, cwd: string, signal: AbortSignal): Promise<string> {
   const abort = new AbortController();
+  signal.addEventListener('abort', () => abort.abort(), { once: true });
   const timer = setTimeout(() => abort.abort(), ASK_TIMEOUT_MS);
   try {
     const q = query({
@@ -165,7 +180,10 @@ async function summarize(
   prev: StatusReport | null,
   prevById: Map<string, Line>,
   answers: Map<string, string>,
+  signal: AbortSignal,
 ) {
+  const abort = new AbortController();
+  signal.addEventListener('abort', () => abort.abort(), { once: true });
   const digest = sessions
     .map((s, i) => {
       const own = answers.get(s.id);
@@ -198,7 +216,7 @@ async function summarize(
       `Refer to sessions by name, never by number. Don't restate the status word (running/stopped); it's shown separately.\n\n${digest}`,
     // persistSession: false = nothing is saved to ~/.claude/projects, so these never pile up in your
     // session lists (or on the lens). Older saved ones are deleted by external.ts.
-    options: { model: config.statusModel, maxTurns: 1, allowedTools: [], tools: [], settingSources: [], persistSession: false, env: claudeEnv() },
+    options: { model: config.statusModel, maxTurns: 1, allowedTools: [], tools: [], settingSources: [], persistSession: false, abortController: abort, env: claudeEnv() },
   });
   let raw = '';
   for await (const m of q) if (m.type === 'result' && m.subtype === 'success') raw = m.result;

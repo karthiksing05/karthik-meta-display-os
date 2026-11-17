@@ -168,6 +168,8 @@ export type ClientMsg =
   | { t: 'question.answer'; id: string; answers: Record<string, string> }
   | { t: 'ask'; target: 'all' | string; text: string }
   | { t: 'status.check' }
+  /** Stop the running status check: no more sessions are asked, ones answering are interrupted, no report. */
+  | { t: 'status.cancel' }
   /** The notes tile: dictated text for the notes session (started the first time). */
   | { t: 'notes.ask'; text: string }
   | { t: 'dictation.clean'; reqId: string; text: string; context?: string }

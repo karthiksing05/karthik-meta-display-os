@@ -63,7 +63,7 @@ onMessage((m) => {
   if (m.t === 'notify') toast(esc(m.text), m.level);
   if (m.t === 'card') toast(`<div class="y">${esc(m.title)}</div><div class="small">${esc(m.body).replace(/\n/g, '<br>')}</div>`, 'info', 9000);
   if (m.t === 'error') toast(esc(m.text), 'error', 6000);
-  if (m.t === 'status.report' && currentScreen().name !== 'report') go('report');
+  if (m.t === 'status.report' && !store.statusCancelled && currentScreen().name !== 'report') go('report');
 });
 
 // Refresh relative times ("5m") once a minute even without new data.
